@@ -1,0 +1,11 @@
+{
+  "sheetSize": [192, 32],
+  "slotSize": [32, 32],
+  "order": ["Front", "Right", "Back", "Left", "Top", "Bottom"],
+  "opaquePixels": [427, 264, 427, 264, 240, 240],
+  "voxelDimensions": [20, 22, 12],
+  "candidateCells": 5280,
+  "occupiedCells": 5124,
+  "pixel2To1Sha256": "F7AEBE08E015EFF67FF542EB6D6DBED3D7AF0951C44F3E73BB6E5F57FBE90756",
+  "trueIsometricSha256": "44F9AB8704DFCC905C9AF6F2AA1F71057A5CDE8A46FE0EF0D48CA47B70713609"
+}

@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\PixelVoxel.Core\PixelVoxel.Core.csproj" />
+    <ProjectReference Include="..\PixelVoxel.Imaging\PixelVoxel.Imaging.csproj" />
+    <ProjectReference Include="..\PixelVoxel.Export\PixelVoxel.Export.csproj" />
+  </ItemGroup>
+</Project>
+

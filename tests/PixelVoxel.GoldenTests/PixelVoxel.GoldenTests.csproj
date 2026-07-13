@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit.v3" />
+    <PackageReference Include="xunit.runner.visualstudio">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\PixelVoxel.Core\PixelVoxel.Core.csproj" />
+    <ProjectReference Include="..\..\src\PixelVoxel.Imaging\PixelVoxel.Imaging.csproj" />
+    <ProjectReference Include="..\..\src\PixelVoxel.Rendering\PixelVoxel.Rendering.csproj" />
+    <ProjectReference Include="..\..\src\PixelVoxel.Export\PixelVoxel.Export.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="..\..\benchmark\Inputs\ZZZ_Sheet.png"
+          Link="Fixtures\ZZZ_Sheet.png"
+          CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

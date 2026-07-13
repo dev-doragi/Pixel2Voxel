@@ -1,0 +1,201 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:PixelVoxel.App.ViewModels"
+        xmlns:views="using:PixelVoxel.App.Views"
+        x:Class="PixelVoxel.App.Views.MainWindow"
+        x:DataType="vm:MainWindowViewModel"
+        Width="1280"
+        Height="820"
+        MinWidth="960"
+        MinHeight="600"
+        Title="Pixel Voxel">
+  <Grid RowDefinitions="Auto,*,Auto">
+    <Menu Grid.Row="0">
+      <MenuItem Header="File">
+        <MenuItem Header="Import 6×1 Sheet..." Click="OpenHorizontalSheet_Click" />
+      </MenuItem>
+      <MenuItem Header="Edit" />
+      <MenuItem Header="View">
+        <MenuItem Header="Pixel 2:1" Tag="Pixel2To1" Click="SelectPreset_Click" />
+        <MenuItem Header="True Isometric" Tag="TrueIsometric" Click="SelectPreset_Click" />
+        <MenuItem Header="Front" Tag="Front" Click="SelectPreset_Click" />
+        <MenuItem Header="Right" Tag="Right" Click="SelectPreset_Click" />
+        <MenuItem Header="Top" Tag="Top" Click="SelectPreset_Click" />
+      </MenuItem>
+      <MenuItem Header="Model" />
+      <MenuItem Header="Export" />
+      <MenuItem Header="Help" />
+    </Menu>
+
+    <Grid Grid.Row="1" ColumnDefinitions="300,*,320">
+      <Border Grid.Column="0"
+              Padding="14"
+              BorderBrush="{DynamicResource ThemeBorderLowBrush}"
+              BorderThickness="0,0,1,0">
+        <ScrollViewer>
+          <StackPanel Spacing="10">
+            <TextBlock Text="Import" FontSize="16" FontWeight="SemiBold" />
+            <Button HorizontalAlignment="Stretch"
+                    Click="OpenHorizontalSheet_Click"
+                    Content="Import 6×1 Sheet" />
+            <TextBlock Text="Fixed order: Front, Right, Back, Left, Top, Bottom"
+                       TextWrapping="Wrap"
+                       Opacity="0.72" />
+
+            <Separator Margin="0,6" />
+            <TextBlock Text="Separate six PNG files" FontWeight="SemiBold" />
+            <Grid ColumnDefinitions="72,*"
+                  RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto">
+              <Button Grid.Row="0" Tag="Front" Click="SelectFaceFile_Click" Content="Front" />
+              <TextBlock Grid.Row="0" Grid.Column="1" Margin="8,0,0,0"
+                         VerticalAlignment="Center" Text="{Binding FrontPath}" TextTrimming="CharacterEllipsis" />
+              <Button Grid.Row="1" Tag="Right" Click="SelectFaceFile_Click" Content="Right" />
+              <TextBlock Grid.Row="1" Grid.Column="1" Margin="8,0,0,0"
+                         VerticalAlignment="Center" Text="{Binding RightPath}" TextTrimming="CharacterEllipsis" />
+              <Button Grid.Row="2" Tag="Back" Click="SelectFaceFile_Click" Content="Back" />
+              <TextBlock Grid.Row="2" Grid.Column="1" Margin="8,0,0,0"
+                         VerticalAlignment="Center" Text="{Binding BackPath}" TextTrimming="CharacterEllipsis" />
+              <Button Grid.Row="3" Tag="Left" Click="SelectFaceFile_Click" Content="Left" />
+              <TextBlock Grid.Row="3" Grid.Column="1" Margin="8,0,0,0"
+                         VerticalAlignment="Center" Text="{Binding LeftPath}" TextTrimming="CharacterEllipsis" />
+              <Button Grid.Row="4" Tag="Top" Click="SelectFaceFile_Click" Content="Top" />
+              <TextBlock Grid.Row="4" Grid.Column="1" Margin="8,0,0,0"
+                         VerticalAlignment="Center" Text="{Binding TopPath}" TextTrimming="CharacterEllipsis" />
+              <Button Grid.Row="5" Tag="Bottom" Click="SelectFaceFile_Click" Content="Bottom" />
+              <TextBlock Grid.Row="5" Grid.Column="1" Margin="8,0,0,0"
+                         VerticalAlignment="Center" Text="{Binding BottomPath}" TextTrimming="CharacterEllipsis" />
+            </Grid>
+            <Button HorizontalAlignment="Stretch"
+                    Click="ReconstructSeparate_Click"
+                    Content="Reconstruct Separate Views" />
+
+            <Separator Margin="0,6" />
+            <TextBlock Text="Import statistics" FontWeight="SemiBold" />
+            <TextBlock Text="{Binding ImportSummary}"
+                       FontFamily="Consolas"
+                       TextWrapping="Wrap" />
+          </StackPanel>
+        </ScrollViewer>
+      </Border>
+
+      <Border x:Name="ViewportHost"
+              Grid.Column="1"
+              Margin="12"
+              ClipToBounds="True"
+              Background="#141820"
+              BorderBrush="{DynamicResource ThemeBorderMidBrush}"
+              BorderThickness="1"
+              PointerPressed="Viewport_PointerPressed"
+              PointerMoved="Viewport_PointerMoved"
+              PointerReleased="Viewport_PointerReleased"
+              PointerWheelChanged="Viewport_PointerWheelChanged">
+        <Grid>
+          <views:SilkVoxelViewportControl />
+          <views:CpuPixelViewportControl Source="{Binding ViewportBitmap}"
+                                         ManualScale="{Binding ManualZoomScale}"
+                                         IsVisible="{Binding IsCpuFallbackActive}" />
+          <Border HorizontalAlignment="Center"
+                  VerticalAlignment="Center"
+                  Padding="12,8"
+                  Background="#B0141820"
+                  IsVisible="{Binding HasViewportMessage}">
+            <TextBlock Margin="12"
+                       Text="{Binding ViewportMessage}"
+                       TextAlignment="Center"
+                       TextWrapping="Wrap" />
+          </Border>
+        </Grid>
+      </Border>
+
+      <Border Grid.Column="2"
+              Padding="14"
+              BorderBrush="{DynamicResource ThemeBorderLowBrush}"
+              BorderThickness="1,0,0,0">
+        <ScrollViewer>
+          <StackPanel Spacing="10">
+            <TextBlock Text="Camera" FontSize="16" FontWeight="SemiBold" />
+            <TextBlock Text="{Binding CameraSummary}" TextWrapping="Wrap" />
+            <UniformGrid Columns="2" Rows="3">
+              <Button Margin="2" Tag="Pixel2To1" Click="SelectPreset_Click" Content="Pixel 2:1" />
+              <Button Margin="2" Tag="TrueIsometric" Click="SelectPreset_Click" Content="True Iso" />
+              <Button Margin="2" Tag="Front" Click="SelectPreset_Click" Content="Front" />
+              <Button Margin="2" Tag="Right" Click="SelectPreset_Click" Content="Right" />
+              <Button Margin="2" Tag="Top" Click="SelectPreset_Click" Content="Top" />
+              <Button Margin="2" Click="LoadSavedDefault_Click" Content="Saved Default" />
+            </UniformGrid>
+            <Button Click="SaveCurrentAsDefault_Click" Content="Save Current as Default" />
+            <Grid ColumnDefinitions="*,Auto">
+              <TextBlock VerticalAlignment="Center" Text="Zoom" />
+              <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
+                <TextBlock VerticalAlignment="Center" Text="{Binding ZoomSummary}" />
+                <Button Click="FitZoom_Click" Content="Fit" />
+              </StackPanel>
+            </Grid>
+            <TextBlock Text="Right-drag: orbit (reversed) · Wheel: integer zoom"
+                       TextWrapping="Wrap" Opacity="0.72" />
+
+            <Separator Margin="0,6" />
+            <TextBlock Text="Animation" FontSize="16" FontWeight="SemiBold" />
+            <CheckBox IsChecked="{Binding HorizontalAnimationEnabled}" Content="Horizontal 360° loop" />
+            <CheckBox IsChecked="{Binding VerticalAnimationEnabled}" Content="Vertical 360° loop" />
+            <TextBlock Text="{Binding ObjectRotationSummary}" TextWrapping="Wrap" Opacity="0.72" />
+            <Grid ColumnDefinitions="*,Auto">
+              <TextBlock Text="Speed" />
+              <TextBlock Grid.Column="1" Text="{Binding AnimationSpeed, StringFormat={}{0:0}°/s}" />
+            </Grid>
+            <Slider Minimum="5" Maximum="180" TickFrequency="5"
+                    Value="{Binding AnimationSpeed}" />
+
+            <Separator Margin="0,6" />
+            <TextBlock Text="Lighting" FontSize="16" FontWeight="SemiBold" />
+            <CheckBox IsChecked="{Binding LightingEnabled}" Content="4-step directional light" />
+            <TextBlock Text="Directional light uses rotation only; position does not affect parallel light rays."
+                       TextWrapping="Wrap" Opacity="0.72" />
+            <Grid ColumnDefinitions="*,Auto">
+              <TextBlock Text="Rotation Y (Azimuth)" />
+              <TextBlock Grid.Column="1" Text="{Binding LightAzimuth, StringFormat={}{0:0}°}" />
+            </Grid>
+            <Slider Minimum="-180" Maximum="180" TickFrequency="5"
+                    Value="{Binding LightAzimuth}" />
+            <Grid ColumnDefinitions="*,Auto">
+              <TextBlock Text="Rotation X (Elevation)" />
+              <TextBlock Grid.Column="1" Text="{Binding LightElevation, StringFormat={}{0:0}°}" />
+            </Grid>
+            <Slider Minimum="-90" Maximum="90" TickFrequency="5"
+                    Value="{Binding LightElevation}" />
+            <Grid ColumnDefinitions="*,Auto">
+              <TextBlock Text="Ambient" />
+              <TextBlock Grid.Column="1" Text="{Binding Ambient, StringFormat={}{0:0.00}}" />
+            </Grid>
+            <Slider Minimum="0" Maximum="1" TickFrequency="0.05"
+                    Value="{Binding Ambient}" />
+            <Grid ColumnDefinitions="*,Auto">
+              <TextBlock Text="Intensity" />
+              <TextBlock Grid.Column="1" Text="{Binding Intensity, StringFormat={}{0:0.00}}" />
+            </Grid>
+            <Slider Minimum="0" Maximum="1" TickFrequency="0.05"
+                    Value="{Binding Intensity}" />
+
+            <Separator Margin="0,6" />
+            <TextBlock Text="Outline" FontSize="16" FontWeight="SemiBold" />
+            <CheckBox IsChecked="{Binding OutlineEnabled}" Content="1px pixel outline" />
+            <CheckBox IsChecked="{Binding IncludeDepthOutline}" Content="Include normal/depth edges" />
+            <TextBlock Text="Color" />
+            <ColorPicker Color="{Binding OutlineColor}" IsAlphaEnabled="False" />
+
+            <Separator Margin="0,6" />
+            <TextBlock Text="Background" FontSize="16" FontWeight="SemiBold" />
+            <ColorPicker Color="{Binding BackgroundColor}" IsAlphaEnabled="False" />
+          </StackPanel>
+        </ScrollViewer>
+      </Border>
+    </Grid>
+
+    <Border Grid.Row="2"
+            Padding="8,4"
+            BorderBrush="{DynamicResource ThemeBorderLowBrush}"
+            BorderThickness="0,1,0,0">
+      <TextBlock Text="{Binding StatusText}" />
+    </Border>
+  </Grid>
+</Window>

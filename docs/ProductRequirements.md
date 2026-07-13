@@ -1,0 +1,33 @@
+# Product Requirements
+
+## 목적
+
+Pixel Voxel은 직교 PNG 이미지의 Front, Side, Top 뷰를 입력으로 받아 편집 가능한 3D 픽셀 모델을 만들고 여러 방향의 PNG 스프라이트로 출력하는 독립 데스크톱 프로그램을 목표로 한다.
+
+## 대상 환경
+
+- C# 및 .NET 10
+- Avalonia UI
+- Windows 우선 지원
+- 이후 macOS와 Linux 지원
+- Silk.NET 기반 OpenGL 렌더링
+- ImageSharp 기반 PNG 처리
+
+## 현재 구현 범위
+
+- Aseprite 정적 6×1 PNG 및 개별 6면 PNG 가져오기
+- 이진 알파 검증과 공통 좌표계 정규화
+- 제공된 알파 실루엣 교집합 기반 visual-hull 복셀 재구성
+- 셀마다 방향별 원본 RGBA 보존
+- 노출 면 기반 비영속 렌더 캐시
+- Silk.NET OpenGL 저해상도 FBO와 CPU 기준 렌더러
+- Pixel 2:1, True Isometric, Front, Right, Top 및 Free View
+- nearest-neighbor 정수 배율 Viewport
+
+## 아직 구현하지 않은 범위
+
+- 복셀 및 픽셀 편집 도구와 Undo/Redo
+- 애니메이션 프레임 정렬과 재생
+- 반투명 픽셀 및 블렌딩
+- 프로젝트 저장 및 불러오기
+- PNG, GIF, OBJ 출력

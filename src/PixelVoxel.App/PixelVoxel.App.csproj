@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Avalonia.Desktop" />
+    <PackageReference Include="Avalonia.Controls.ColorPicker" />
+    <PackageReference Include="Avalonia.Fonts.Inter" />
+    <PackageReference Include="Avalonia.Themes.Fluent" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\PixelVoxel.Core\PixelVoxel.Core.csproj" />
+    <ProjectReference Include="..\PixelVoxel.Rendering\PixelVoxel.Rendering.csproj" />
+    <ProjectReference Include="..\PixelVoxel.Imaging\PixelVoxel.Imaging.csproj" />
+    <ProjectReference Include="..\PixelVoxel.Export\PixelVoxel.Export.csproj" />
+  </ItemGroup>
+</Project>
