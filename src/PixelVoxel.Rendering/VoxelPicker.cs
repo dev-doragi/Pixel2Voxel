@@ -29,10 +29,7 @@ public sealed class VoxelPicker
             throw new ArgumentOutOfRangeException(nameof(logicalPosition));
         }
 
-        if (!Matrix4x4.Invert(transform.CombinedRotation, out Matrix4x4 inverseRotation))
-        {
-            throw new InvalidOperationException("The resolved camera transform cannot be inverted.");
-        }
+        Matrix4x4 inverseRotation = transform.InverseModelView;
 
         VoxelDimensions dimensions = document.Storage.Dimensions;
         float diagonal = MathF.Max(

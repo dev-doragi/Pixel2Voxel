@@ -4,7 +4,7 @@ namespace PixelVoxel.Rendering;
 public static class VoxelCameraMotion
 {
     /// <summary>The default angular distance used for face-aligned camera detents.</summary>
-    public const float DefaultFaceSnapThresholdDegrees = 5f;
+    public const float DefaultFaceSnapThresholdDegrees = 2f;
 
     /// <summary>Applies the user-facing horizontal drag direction and wraps the result.</summary>
     public static float RotateYaw(float yawDegrees, float deltaX, float sensitivity) =>

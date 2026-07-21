@@ -2,6 +2,8 @@ using System.ComponentModel;
 using System.Collections.ObjectModel;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using Matrix4x4 = System.Numerics.Matrix4x4;
+using Vector3 = System.Numerics.Vector3;
 using Avalonia;
 using Avalonia.Media.Imaging;
 using Avalonia.Platform;
@@ -58,7 +60,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     private string _statusText = "Ready";
     private string _viewportMessage = "Import a 6×1 sheet or assign six PNG files.";
     private string _cameraSummary = "Pixel Preview · Pixel 2:1";
-    private string _objectRotationSummary = "Object · Yaw 0° · Pitch 0° · Tilt 0°";
+    private string _objectRotationSummary = "Object · Yaw 0° · Pitch 0° · Roll 0°";
     private string _zoomSummary = "Fit";
     private int _sourcePixelWidth;
     private int _sourcePixelHeight;
@@ -70,9 +72,9 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     private float _savedDefaultYaw;
     private float _savedDefaultPitch;
     private bool _cameraFaceSnapEnabled;
-    private bool _isCameraFaceSnapped;
     private bool _horizontalAnimationEnabled;
     private bool _verticalAnimationEnabled;
+    private bool _rollAnimationEnabled;
     private float _animationSpeed;
     private int? _manualZoomScale;
     private bool _lightingEnabled;
@@ -428,35 +430,38 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         private set => SetField(ref _zoomSummary, value);
     }
 
-    public bool HorizontalAnimationEnabled
+    public bool YawAnimationEnabled
     {
         get => _horizontalAnimationEnabled;
         set
         {
             if (!SetField(ref _horizontalAnimationEnabled, value)) return;
-            if (!value)
-            {
-                ResetModelRotationAxis(resetYaw: true, resetPitch: false);
-            }
             OnPropertyChanged(nameof(IsAnimationActive));
         }
     }
 
-    public bool VerticalAnimationEnabled
+    public bool PitchAnimationEnabled
     {
         get => _verticalAnimationEnabled;
         set
         {
             if (!SetField(ref _verticalAnimationEnabled, value)) return;
-            if (!value)
-            {
-                ResetModelRotationAxis(resetYaw: false, resetPitch: true);
-            }
             OnPropertyChanged(nameof(IsAnimationActive));
         }
     }
 
-    public bool IsAnimationActive => HorizontalAnimationEnabled || VerticalAnimationEnabled;
+    public bool RollAnimationEnabled
+    {
+        get => _rollAnimationEnabled;
+        set
+        {
+            if (!SetField(ref _rollAnimationEnabled, value)) return;
+            OnPropertyChanged(nameof(IsAnimationActive));
+        }
+    }
+
+    public bool IsAnimationActive =>
+        YawAnimationEnabled || PitchAnimationEnabled || RollAnimationEnabled;
 
     public bool CameraFaceSnapEnabled
     {
@@ -761,6 +766,41 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         ApplyFreeCamera();
     }
 
+    /// <summary>Pans the orthographic camera in framebuffer pixels.</summary>
+    public void Pan(float deltaX, float deltaY)
+    {
+        if (!float.IsFinite(deltaX) || !float.IsFinite(deltaY)) return;
+        _camera = _camera with
+        {
+            PanX = _camera.PanX + deltaX,
+            PanY = _camera.PanY + deltaY,
+        };
+        RenderCurrentScene();
+    }
+
+    /// <summary>Rotates the object around a local gizmo axis or the current view axis.</summary>
+    public void RotateObject(RotationGizmoAxis axis, float degrees)
+    {
+        if (axis == RotationGizmoAxis.None || !float.IsFinite(degrees) || degrees == 0f) return;
+        _modelRotation = axis switch
+        {
+            RotationGizmoAxis.LocalX => _modelRotation.RotateLocal(Vector3.UnitX, degrees),
+            RotationGizmoAxis.LocalY => _modelRotation.RotateLocal(Vector3.UnitY, degrees),
+            RotationGizmoAxis.LocalZ => _modelRotation.RotateLocal(Vector3.UnitZ, degrees),
+            RotationGizmoAxis.View => RotateAroundViewAxis(_modelRotation, degrees),
+            _ => _modelRotation,
+        };
+        SyncModelRotationDisplay();
+    }
+
+    /// <summary>Restores an object orientation captured before an interactive drag.</summary>
+    public void RestoreObjectRotation(VoxelModelRotationState state)
+    {
+        ArgumentNullException.ThrowIfNull(state);
+        _modelRotation = state;
+        SyncModelRotationDisplay();
+    }
+
     /// <summary>Enters unrestricted orbit mode at the current camera angle.</summary>
     public void EnterFreeView()
     {
@@ -772,15 +812,19 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         StatusText = "Free rotation enabled";
     }
 
-    /// <summary>Tilts the object around its local Z axis.</summary>
-    public void Tilt(float deltaX) =>
-        ModelRollDegrees = _rawModelRollDegrees + (deltaX * FreeRotationSensitivity);
-
-    /// <summary>Restores only the object-local tilt.</summary>
-    public void ResetTilt()
+    /// <summary>Restores the complete object-local orientation.</summary>
+    public void ResetObject()
     {
-        ModelRollDegrees = 0f;
-        StatusText = "Object tilt reset";
+        _modelRotation = VoxelModelRotationState.Identity;
+        SyncModelRotationDisplay();
+        StatusText = "Object rotation reset";
+    }
+
+    /// <summary>Restores only the camera while preserving object rotation.</summary>
+    public void ResetCamera()
+    {
+        SelectPreset(VoxelCameraPreset.Pixel2To1);
+        StatusText = "Camera reset to Pixel 2:1";
     }
 
     /// <summary>Restores the standard camera and clears transient object rotation.</summary>
@@ -788,25 +832,27 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     {
         _horizontalAnimationEnabled = false;
         _verticalAnimationEnabled = false;
-        OnPropertyChanged(nameof(HorizontalAnimationEnabled));
-        OnPropertyChanged(nameof(VerticalAnimationEnabled));
+        _rollAnimationEnabled = false;
+        OnPropertyChanged(nameof(YawAnimationEnabled));
+        OnPropertyChanged(nameof(PitchAnimationEnabled));
+        OnPropertyChanged(nameof(RollAnimationEnabled));
         OnPropertyChanged(nameof(IsAnimationActive));
-        _rawModelYawDegrees = 0f;
-        _rawModelPitchDegrees = 0f;
-        _rawModelRollDegrees = 0f;
-        ApplyModelRotation();
-        SelectPreset(VoxelCameraPreset.Pixel2To1);
+        ResetObject();
+        ResetCamera();
         StatusText = "View reset to Pixel 2:1";
     }
 
     /// <summary>Commits a visible face snap as the starting point for the next orbit drag.</summary>
     public void CommitCameraSnap()
     {
-        if (!_isCameraFaceSnapped) return;
-        _rawYawDegrees = _camera.YawDegrees;
-        _rawPitchDegrees = _camera.PitchDegrees;
-        _isCameraFaceSnapped = false;
+        if (!CameraFaceSnapEnabled || _camera.Mode != VoxelViewMode.FreeView) return;
+        VoxelCameraFaceSnap snap = VoxelCameraMotion.SnapToFace(_rawYawDegrees, _rawPitchDegrees);
+        if (!snap.IsSnapped) return;
+        _rawYawDegrees = snap.YawDegrees;
+        _rawPitchDegrees = snap.PitchDegrees;
+        _camera = _camera with { YawDegrees = snap.YawDegrees, PitchDegrees = snap.PitchDegrees };
         CameraSummary = $"Free View · Yaw {_camera.YawDegrees:0}° · Pitch {_camera.PitchDegrees:0}° · Face Aligned";
+        RenderCurrentScene();
     }
 
     public void AdvanceAnimations(double elapsedSeconds)
@@ -814,17 +860,22 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         if (!IsAnimationActive || elapsedSeconds <= 0d) return;
         float delta = _animationSpeed * (float)Math.Min(elapsedSeconds, 0.1d);
 
-        if (HorizontalAnimationEnabled)
+        if (YawAnimationEnabled)
         {
-            _rawModelYawDegrees = VoxelCameraMotion.WrapAngle(_rawModelYawDegrees + delta);
+            _modelRotation = _modelRotation.RotateLocal(Vector3.UnitY, delta);
         }
 
-        if (VerticalAnimationEnabled)
+        if (PitchAnimationEnabled)
         {
-            _rawModelPitchDegrees = VoxelCameraMotion.WrapAngle(_rawModelPitchDegrees + delta);
+            _modelRotation = _modelRotation.RotateLocal(Vector3.UnitX, delta);
         }
 
-        ApplyModelRotation();
+        if (RollAnimationEnabled)
+        {
+            _modelRotation = _modelRotation.RotateLocal(Vector3.UnitZ, delta);
+        }
+
+        SyncModelRotationDisplay();
     }
 
     public void ZoomBy(int direction, int currentFitScale)
@@ -1421,7 +1472,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         _renderStyle = BuildRenderStyle();
         CameraSummary = $"Project · Yaw {yaw:0}° · Pitch {pitch:0}°";
         ObjectRotationSummary =
-            $"Object · Yaw {_rawModelYawDegrees:0}° · Pitch {_rawModelPitchDegrees:0}° · Tilt {_rawModelRollDegrees:0}°";
+            $"Object · Yaw {_rawModelYawDegrees:0}° · Pitch {_rawModelPitchDegrees:0}° · Roll {_rawModelRollDegrees:0}°";
         UpdateExportSummary();
         foreach (string property in new[]
         {
@@ -1727,7 +1778,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         _rawModelPitchDegrees = 0f;
         _rawModelRollDegrees = 0f;
         _modelRotation = VoxelModelRotationState.Identity;
-        ObjectRotationSummary = "Object · Yaw 0° · Pitch 0° · Tilt 0°";
+        ObjectRotationSummary = "Object · Yaw 0° · Pitch 0° · Roll 0°";
         OnPropertyChanged(nameof(CurrentModelRotation));
         SixViewSlotInfo sourceSlot = result.Import.Slots[0];
         _sourcePixelWidth = sourceSlot.Width;
@@ -1803,16 +1854,6 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     {
         float yaw = VoxelCameraMotion.Snap(_rawYawDegrees);
         float pitch = VoxelCameraMotion.Snap(_rawPitchDegrees);
-        bool faceSnapped = false;
-        if (CameraFaceSnapEnabled)
-        {
-            VoxelCameraFaceSnap snap = VoxelCameraMotion.SnapToFace(yaw, pitch);
-            yaw = snap.YawDegrees;
-            pitch = snap.PitchDegrees;
-            faceSnapped = snap.IsSnapped;
-        }
-
-        _isCameraFaceSnapped = faceSnapped;
 
         if (_camera.Mode == VoxelViewMode.FreeView &&
             _camera.YawDegrees == yaw &&
@@ -1828,9 +1869,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             YawDegrees = yaw,
             PitchDegrees = pitch,
         };
-        CameraSummary = faceSnapped
-            ? $"Free View · Yaw {yaw:0}° · Pitch {pitch:0}° · Face Snap"
-            : $"Free View · Yaw {yaw:0}° · Pitch {pitch:0}°";
+        CameraSummary = $"Free View · Yaw {yaw:0}° · Pitch {pitch:0}°";
         RenderCurrentScene();
     }
 
@@ -1847,32 +1886,34 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         }
 
         _modelRotation = new VoxelModelRotationState(yaw, pitch, roll);
-        ObjectRotationSummary = $"Object · Yaw {yaw:0}° · Pitch {pitch:0}° · Tilt {roll:0}°";
+        ObjectRotationSummary = $"Object · Yaw {yaw:0}° · Pitch {pitch:0}° · Roll {roll:0}°";
         OnPropertyChanged(nameof(CurrentModelRotation));
         OnPropertyChanged(nameof(ModelRollDegrees));
         RenderCurrentScene();
     }
 
-    private void ResetModelRotationAxis(bool resetYaw, bool resetPitch)
+    private VoxelModelRotationState RotateAroundViewAxis(VoxelModelRotationState state, float degrees)
     {
-        if (resetYaw)
-        {
-            _rawModelYawDegrees = 0f;
-        }
+        Matrix4x4.Invert(_renderTransform?.ViewRotation ?? Matrix4x4.Identity, out Matrix4x4 inverseView);
+        Vector3 worldAxis = Vector3.Normalize(Vector3.TransformNormal(Vector3.UnitZ, inverseView));
+        return state.RotateWorld(worldAxis, degrees);
+    }
 
-        if (resetPitch)
-        {
-            _rawModelPitchDegrees = 0f;
-        }
-
-        ApplyModelRotation();
+    private void SyncModelRotationDisplay()
+    {
+        _rawModelYawDegrees = _modelRotation.YawDegrees;
+        _rawModelPitchDegrees = _modelRotation.PitchDegrees;
+        _rawModelRollDegrees = _modelRotation.RollDegrees;
+        ObjectRotationSummary = $"Object · Yaw {_rawModelYawDegrees:0}° · Pitch {_rawModelPitchDegrees:0}° · Roll {_rawModelRollDegrees:0}°";
+        OnPropertyChanged(nameof(CurrentModelRotation));
+        OnPropertyChanged(nameof(ModelRollDegrees));
+        RenderCurrentScene();
     }
 
     private void SetCamera(float yaw, float pitch, VoxelViewMode mode, VoxelCameraPreset preset)
     {
         _rawYawDegrees = yaw;
         _rawPitchDegrees = pitch;
-        _isCameraFaceSnapped = false;
         _camera = _camera with
         {
             Mode = mode,

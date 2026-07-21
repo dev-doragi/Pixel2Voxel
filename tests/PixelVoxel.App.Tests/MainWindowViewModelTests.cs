@@ -39,7 +39,7 @@ public sealed class MainWindowViewModelTests : IDisposable
         viewModel.Rotate(20f, 10f);
         Assert.Equal(VoxelViewMode.FreeView, viewModel.CurrentCameraState.Mode);
 
-        viewModel.HorizontalAnimationEnabled = true;
+        viewModel.YawAnimationEnabled = true;
         viewModel.AdvanceAnimations(0.1d);
         viewModel.ResetView();
 
@@ -49,17 +49,46 @@ public sealed class MainWindowViewModelTests : IDisposable
     }
 
     [Fact]
-    public void ObjectTiltCanBeDraggedAndResetIndependently()
+    public void ObjectGizmoCanRotateAndResetIndependently()
     {
         using MainWindowViewModel viewModel = CreateViewModel();
         VoxelCameraState camera = viewModel.CurrentCameraState;
 
-        viewModel.Tilt(20f);
+        viewModel.RotateObject(RotationGizmoAxis.LocalZ, 14f);
 
         Assert.Equal(14f, viewModel.CurrentModelRotation.RollDegrees);
         Assert.Equal(camera, viewModel.CurrentCameraState);
-        viewModel.ResetTilt();
+        viewModel.ResetObject();
         Assert.Equal(VoxelModelRotationState.Identity, viewModel.CurrentModelRotation);
+    }
+
+    [Fact]
+    public void CameraAndObjectResetAreIndependent()
+    {
+        using MainWindowViewModel viewModel = CreateViewModel();
+        viewModel.Rotate(20f, 10f);
+        viewModel.RotateObject(RotationGizmoAxis.LocalX, 15f);
+        VoxelModelRotationState rotated = viewModel.CurrentModelRotation;
+
+        viewModel.ResetCamera();
+
+        Assert.Equal(VoxelCameraState.Pixel2To1(), viewModel.CurrentCameraState);
+        Assert.Equal(rotated, viewModel.CurrentModelRotation);
+        viewModel.ResetObject();
+        Assert.Equal(VoxelModelRotationState.Identity, viewModel.CurrentModelRotation);
+    }
+
+    [Fact]
+    public void PanMovesOnlyTheCameraAnchor()
+    {
+        using MainWindowViewModel viewModel = CreateViewModel();
+        VoxelModelRotationState rotation = viewModel.CurrentModelRotation;
+
+        viewModel.Pan(12f, -7f);
+
+        Assert.Equal(12f, viewModel.CurrentCameraState.PanX);
+        Assert.Equal(-7f, viewModel.CurrentCameraState.PanY);
+        Assert.Equal(rotation, viewModel.CurrentModelRotation);
     }
 
     [Fact]
@@ -78,44 +107,50 @@ public sealed class MainWindowViewModelTests : IDisposable
     {
         using MainWindowViewModel viewModel = CreateViewModel();
         VoxelCameraState initialCamera = viewModel.CurrentCameraState;
-        viewModel.HorizontalAnimationEnabled = true;
-        viewModel.VerticalAnimationEnabled = true;
+        viewModel.YawAnimationEnabled = true;
+        viewModel.PitchAnimationEnabled = true;
 
         viewModel.AdvanceAnimations(0.1d);
 
         Assert.Equal(initialCamera, viewModel.CurrentCameraState);
-        Assert.Equal(new VoxelModelRotationState(3f, 3f), viewModel.CurrentModelRotation);
+        Assert.Equal(3f, viewModel.CurrentModelRotation.YawDegrees);
+        Assert.Equal(3f, viewModel.CurrentModelRotation.PitchDegrees);
+        Assert.Equal(1f, viewModel.CurrentModelRotation.Orientation.Length(), 5);
         VoxelModelRotationState animatedRotation = viewModel.CurrentModelRotation;
         viewModel.Rotate(10f, 10f);
         Assert.NotEqual(initialCamera, viewModel.CurrentCameraState);
         Assert.Equal(animatedRotation, viewModel.CurrentModelRotation);
-        Assert.True(viewModel.HorizontalAnimationEnabled);
-        Assert.True(viewModel.VerticalAnimationEnabled);
+        Assert.True(viewModel.YawAnimationEnabled);
+        Assert.True(viewModel.PitchAnimationEnabled);
         viewModel.SelectPreset(VoxelCameraPreset.Front);
         Assert.Equal(animatedRotation, viewModel.CurrentModelRotation);
-        Assert.True(viewModel.HorizontalAnimationEnabled);
-        Assert.True(viewModel.VerticalAnimationEnabled);
+        Assert.True(viewModel.YawAnimationEnabled);
+        Assert.True(viewModel.PitchAnimationEnabled);
     }
 
     [Fact]
-    public void DisablingEachAnimationResetsOnlyItsModelRotationAxis()
+    public void DisablingAnimationsPausesEveryAxisAtItsCurrentRotation()
     {
         using MainWindowViewModel viewModel = CreateViewModel();
         VoxelCameraState initialCamera = viewModel.CurrentCameraState;
-        viewModel.HorizontalAnimationEnabled = true;
-        viewModel.VerticalAnimationEnabled = true;
+        viewModel.YawAnimationEnabled = true;
+        viewModel.PitchAnimationEnabled = true;
+        viewModel.RollAnimationEnabled = true;
+        viewModel.AdvanceAnimations(0.1d);
+        VoxelModelRotationState paused = viewModel.CurrentModelRotation;
+
+        viewModel.YawAnimationEnabled = false;
+        viewModel.PitchAnimationEnabled = false;
+        viewModel.RollAnimationEnabled = false;
         viewModel.AdvanceAnimations(0.1d);
 
-        viewModel.HorizontalAnimationEnabled = false;
-
-        Assert.Equal(new VoxelModelRotationState(0f, 3f), viewModel.CurrentModelRotation);
+        Assert.Equal(3f, paused.YawDegrees);
+        Assert.Equal(3f, paused.PitchDegrees);
+        Assert.Equal(3f, paused.RollDegrees);
+        Assert.Equal(1f, paused.Orientation.Length(), 5);
+        Assert.Equal(paused, viewModel.CurrentModelRotation);
         Assert.Equal(initialCamera, viewModel.CurrentCameraState);
-        Assert.True(viewModel.VerticalAnimationEnabled);
-
-        viewModel.VerticalAnimationEnabled = false;
-
-        Assert.Equal(VoxelModelRotationState.Identity, viewModel.CurrentModelRotation);
-        Assert.Equal(initialCamera, viewModel.CurrentCameraState);
+        Assert.False(viewModel.IsAnimationActive);
     }
 
     [Fact]
@@ -123,14 +158,14 @@ public sealed class MainWindowViewModelTests : IDisposable
     {
         using MainWindowViewModel viewModel = CreateViewModel();
         viewModel.SelectPreset(VoxelCameraPreset.Front);
-        viewModel.Rotate(4f, -4f);
-        Assert.Equal(0f, viewModel.CurrentCameraState.YawDegrees);
-        Assert.Equal(0f, viewModel.CurrentCameraState.PitchDegrees);
+        viewModel.Rotate(2.5f, -2.5f);
+        Assert.Equal(2f, viewModel.CurrentCameraState.YawDegrees);
+        Assert.Equal(2f, viewModel.CurrentCameraState.PitchDegrees);
 
         viewModel.Rotate(10f, 0f);
 
-        Assert.Equal(10f, viewModel.CurrentCameraState.YawDegrees);
-        Assert.Equal(3f, viewModel.CurrentCameraState.PitchDegrees);
+        Assert.Equal(9f, viewModel.CurrentCameraState.YawDegrees);
+        Assert.Equal(2f, viewModel.CurrentCameraState.PitchDegrees);
     }
 
     [Fact]
@@ -138,9 +173,9 @@ public sealed class MainWindowViewModelTests : IDisposable
     {
         using MainWindowViewModel viewModel = CreateViewModel();
         viewModel.SelectPreset(VoxelCameraPreset.Front);
-        viewModel.Rotate(4f, -4f);
-        Assert.Equal(0f, viewModel.CurrentCameraState.YawDegrees);
-        Assert.Equal(0f, viewModel.CurrentCameraState.PitchDegrees);
+        viewModel.Rotate(2.5f, -2.5f);
+        Assert.Equal(2f, viewModel.CurrentCameraState.YawDegrees);
+        Assert.Equal(2f, viewModel.CurrentCameraState.PitchDegrees);
 
         viewModel.CommitCameraSnap();
         viewModel.Rotate(10f, 0f);

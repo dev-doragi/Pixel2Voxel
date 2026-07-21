@@ -191,6 +191,12 @@
           <views:CpuPixelViewportControl Source="{Binding ViewportBitmap}"
                                          ManualScale="{Binding ManualZoomScale}"
                                          IsVisible="{Binding IsCpuFallbackActive}" />
+          <views:RotationGizmoControl x:Name="RotationGizmo"
+                                      Width="180" Height="190"
+                                      HorizontalAlignment="Center"
+                                      VerticalAlignment="Center"
+                                      IsVisible="{Binding IsViewMode}"
+                                      IsHitTestVisible="False" />
           <Border HorizontalAlignment="Center"
                   VerticalAlignment="Center"
                   Padding="12,8"
@@ -243,14 +249,14 @@
                 <Button Click="ResizeVolume_Click" Content="Apply Resize" />
               </StackPanel>
             </Expander>
-            <TextBlock Text="Left-drag: active tool · Shift+Paint: all faces · Right-drag: orbit"
+            <TextBlock Text="Left-drag: active tool · Shift+Paint: all faces · Right-drag: orbit · Middle-drag: pan"
                        TextWrapping="Wrap" Opacity="0.72" />
 
             <Separator Margin="0,6" />
             <TextBlock Text="Camera" FontSize="16" FontWeight="SemiBold" />
             <TextBlock Text="{Binding CameraSummary}" TextWrapping="Wrap" />
             <CheckBox IsChecked="{Binding CameraFaceSnapEnabled}"
-                      Content="Face-aligned snap (5°)" />
+                      Content="Face-aligned snap (2°)" />
             <UniformGrid Columns="2" Rows="3">
               <Button Margin="2" Tag="Pixel2To1" Click="SelectPreset_Click" Content="Pixel 2:1" />
               <Button Margin="2" Tag="TrueIsometric" Click="SelectPreset_Click" Content="True Iso" />
@@ -263,6 +269,10 @@
               <Button Margin="2" Click="EnterFreeView_Click" Content="Free Rotation" />
               <Button Margin="2" Click="ResetView_Click" Content="Reset View" />
             </UniformGrid>
+            <UniformGrid Columns="2">
+              <Button Margin="2" Click="ResetCamera_Click" Content="Reset Camera" />
+              <Button Margin="2" Click="ResetObject_Click" Content="Reset Object" />
+            </UniformGrid>
             <Button Click="SaveCurrentAsDefault_Click" Content="Save Current as Default" />
             <Grid ColumnDefinitions="*,Auto">
               <TextBlock VerticalAlignment="Center" Text="Zoom" />
@@ -271,21 +281,22 @@
                 <Button Click="FitZoom_Click" Content="Fit" />
               </StackPanel>
             </Grid>
-            <TextBlock Text="Right-drag: orbit (reversed) · Wheel: integer zoom"
+            <TextBlock Text="Right-drag: orbit · Middle-drag: pan · Wheel: integer zoom"
                        TextWrapping="Wrap" Opacity="0.72" />
 
             <Separator Margin="0,6" />
             <TextBlock Text="Animation" FontSize="16" FontWeight="SemiBold" />
-            <CheckBox IsChecked="{Binding HorizontalAnimationEnabled}" Content="Horizontal 360° loop" />
-            <CheckBox IsChecked="{Binding VerticalAnimationEnabled}" Content="Vertical 360° loop" />
+            <CheckBox IsChecked="{Binding YawAnimationEnabled}" Content="Yaw (Y) 360° loop" />
+            <CheckBox IsChecked="{Binding PitchAnimationEnabled}" Content="Pitch (X) 360° loop" />
+            <CheckBox IsChecked="{Binding RollAnimationEnabled}" Content="Roll (Z) 360° loop" />
             <TextBlock Text="{Binding ObjectRotationSummary}" TextWrapping="Wrap" Opacity="0.72" />
             <Grid ColumnDefinitions="*,Auto">
-              <TextBlock VerticalAlignment="Center" Text="Object Tilt (Z)" />
-              <Button Grid.Column="1" Click="ResetTilt_Click" Content="Reset" />
+              <TextBlock VerticalAlignment="Center" Text="View-relative Roll" />
+              <Button Grid.Column="1" Click="ResetObject_Click" Content="Reset" />
             </Grid>
             <Slider Minimum="-180" Maximum="180" TickFrequency="1"
                     Value="{Binding ModelRollDegrees}" />
-            <TextBlock Text="View mode: Shift+left-drag tilts the object"
+            <TextBlock Text="View mode: drag Local X/Y/Z rings or the white View Roll ring · Esc cancels"
                        TextWrapping="Wrap" Opacity="0.72" />
             <Grid ColumnDefinitions="*,Auto">
               <TextBlock Text="Speed" />

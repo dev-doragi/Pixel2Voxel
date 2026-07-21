@@ -105,6 +105,9 @@ public sealed class ViewportSettingsStoreTests : IDisposable
 
         Assert.DoesNotContain("HorizontalAnimationEnabled", propertyNames);
         Assert.DoesNotContain("VerticalAnimationEnabled", propertyNames);
+        Assert.DoesNotContain("YawAnimationEnabled", propertyNames);
+        Assert.DoesNotContain("PitchAnimationEnabled", propertyNames);
+        Assert.DoesNotContain("RollAnimationEnabled", propertyNames);
     }
 
     public void Dispose()

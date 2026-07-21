@@ -29,12 +29,13 @@
 - True Isometric: yaw -45°, pitch 약 -35.264°
 - Pixel Preview는 투영된 모델 중심과 pan을 내부 프레임버퍼 정수 픽셀에 맞춘다.
 - Free View는 연속 yaw와 pitch를 허용한다.
-- 마우스 입력은 카메라의 world-to-view 회전만 변경한다.
-- 수평·수직 Animation은 모델 중심점 기준 object-to-world 회전만 변경한다.
-- Object Tilt는 모델 중심점 기준 로컬 Z축 roll을 변경하며 yaw/pitch와 함께 합성한다.
-- View 모드에서 `Shift+좌클릭 드래그`는 카메라 대신 Object Tilt를 변경한다.
+- 카메라와 오브젝트의 권위 회전 상태는 정규화된 quaternion이며 Euler 값은 입력·표시·기존 저장 형식 호환에 사용한다.
+- 카메라 Yaw는 월드 +Y, Pitch는 yaw가 적용된 로컬 +X를 기준으로 하며 Roll은 사용하지 않는다.
+- 뷰포트 조작은 우클릭 Orbit, 중클릭 Pan, 휠 Zoom을 사용한다.
+- 오브젝트 X/Y/Z Gizmo는 현재 오브젝트의 로컬 축을 사용하고 바깥 View Roll 링은 현재 카메라 시선축을 사용한다.
+- Yaw/Pitch/Roll Animation은 모델 중심점 기준 로컬 quaternion 회전만 변경한다.
 - 모델 회전과 카메라 회전은 렌더 프레임에서 합성하며 서로의 각도 상태를 덮어쓰지 않는다.
-- Free View 카메라는 축 정렬 면에서 5° 이내일 때 해당 면의 정면 각도로 스냅할 수 있다.
+- Free View 카메라는 축 정렬 면에서 2° 이내일 때 해당 면의 정면 각도로 스냅할 수 있다.
 - 면 정렬은 카메라 시선과 면 노멀이 평행한 상태이며 `|dot|`이 1에 가까운 조건이다.
 - 스냅 중에는 해당 면의 표준 평면도 방향을 사용한다. Top과 Bottom은 현재 yaw에 가장 가까운 90° 단위로 임시 정렬하여 화면상 직교 방향을 유지한다.
 - 우클릭 드래그 중에는 스냅 결과가 원본 Free View 각도를 변경하지 않아 계속 드래그하면 자연스럽게 판정 범위를 벗어날 수 있다.

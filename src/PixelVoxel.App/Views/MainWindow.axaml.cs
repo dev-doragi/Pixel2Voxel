@@ -28,7 +28,10 @@ public sealed partial class MainWindow : Window
     private readonly Stopwatch _animationClock = Stopwatch.StartNew();
     private Point? _lastPointerPosition;
     private bool _isEditingStroke;
-    private bool _isTiltingView;
+    private ViewportDragMode _dragMode;
+    private RotationGizmoAxis _gizmoAxis;
+    private VoxelModelRotationState? _gizmoStartRotation;
+    private float _gizmoDragDegrees;
     private bool _allowClose;
     private bool _closingPromptOpen;
     private TimeSpan _lastAnimationTime;
@@ -338,6 +341,18 @@ public sealed partial class MainWindow : Window
         }
     }
 
+    private void ResetCamera_Click(object? sender, RoutedEventArgs e)
+    {
+        (DataContext as MainWindowViewModel)?.ResetCamera();
+        RotationGizmo.Refresh();
+    }
+
+    private void ResetObject_Click(object? sender, RoutedEventArgs e)
+    {
+        (DataContext as MainWindowViewModel)?.ResetObject();
+        RotationGizmo.Refresh();
+    }
+
     private void FitZoom_Click(object? sender, RoutedEventArgs e)
     {
         if (DataContext is MainWindowViewModel viewModel)
@@ -357,6 +372,16 @@ public sealed partial class MainWindow : Window
         if (point.Properties.IsRightButtonPressed)
         {
             _lastPointerPosition = point.Position;
+            _dragMode = ViewportDragMode.Orbit;
+            e.Pointer.Capture(ViewportHost);
+            e.Handled = true;
+            return;
+        }
+
+        if (point.Properties.IsMiddleButtonPressed)
+        {
+            _lastPointerPosition = point.Position;
+            _dragMode = ViewportDragMode.Pan;
             e.Pointer.Capture(ViewportHost);
             e.Handled = true;
             return;
@@ -366,11 +391,19 @@ public sealed partial class MainWindow : Window
         {
             if (viewModel.IsViewMode)
             {
-                _lastPointerPosition = point.Position;
-                _isTiltingView = e.KeyModifiers.HasFlag(KeyModifiers.Shift);
-                e.Pointer.Capture(ViewportHost);
                 viewModel.ClearEditorHover();
-                e.Handled = true;
+                RotationGizmoAxis axis = RotationGizmo.HitTestRing(e.GetPosition(RotationGizmo));
+                if (axis != RotationGizmoAxis.None)
+                {
+                    _lastPointerPosition = point.Position;
+                    _dragMode = ViewportDragMode.Gizmo;
+                    _gizmoAxis = axis;
+                    _gizmoStartRotation = viewModel.CurrentModelRotation;
+                    _gizmoDragDegrees = 0f;
+                    RotationGizmo.SetDrag(axis, 0f);
+                    e.Pointer.Capture(ViewportHost);
+                    e.Handled = true;
+                }
                 return;
             }
 
@@ -412,7 +445,9 @@ public sealed partial class MainWindow : Window
 
         if (_lastPointerPosition is null)
         {
-            if (!point.Properties.IsLeftButtonPressed && !point.Properties.IsRightButtonPressed)
+            if (!point.Properties.IsLeftButtonPressed &&
+                !point.Properties.IsMiddleButtonPressed &&
+                !point.Properties.IsRightButtonPressed)
             {
                 if (viewModel.IsViewMode)
                 {
@@ -427,9 +462,14 @@ public sealed partial class MainWindow : Window
 
             return;
         }
-        bool isOrbitPressed = point.Properties.IsRightButtonPressed ||
-            (viewModel.IsViewMode && point.Properties.IsLeftButtonPressed);
-        if (!isOrbitPressed)
+        bool expectedButtonPressed = _dragMode switch
+        {
+            ViewportDragMode.Orbit => point.Properties.IsRightButtonPressed,
+            ViewportDragMode.Pan => point.Properties.IsMiddleButtonPressed,
+            ViewportDragMode.Gizmo => point.Properties.IsLeftButtonPressed,
+            _ => false,
+        };
+        if (!expectedButtonPressed)
         {
             ReleasePointer(e.Pointer);
             return;
@@ -437,13 +477,21 @@ public sealed partial class MainWindow : Window
 
         Vector delta = point.Position - _lastPointerPosition.Value;
         _lastPointerPosition = point.Position;
-        if (_isTiltingView)
+        if (_dragMode == ViewportDragMode.Pan)
         {
-            viewModel.Tilt((float)delta.X);
+            viewModel.Pan((float)delta.X, (float)delta.Y);
+        }
+        else if (_dragMode == ViewportDragMode.Gizmo)
+        {
+            float degrees = (float)delta.X * 0.7f;
+            _gizmoDragDegrees += degrees;
+            viewModel.RotateObject(_gizmoAxis, degrees);
+            RotationGizmo.SetDrag(_gizmoAxis, _gizmoDragDegrees);
         }
         else
         {
             viewModel.Rotate((float)delta.X, (float)delta.Y);
+            RotationGizmo.Refresh();
         }
         e.Handled = true;
     }
@@ -519,9 +567,10 @@ public sealed partial class MainWindow : Window
         TimeSpan current = _animationClock.Elapsed;
         double elapsedSeconds = (current - _lastAnimationTime).TotalSeconds;
         _lastAnimationTime = current;
-        if (DataContext is MainWindowViewModel viewModel)
+        if (_dragMode == ViewportDragMode.Orbit && DataContext is MainWindowViewModel viewModel)
         {
             viewModel.AdvanceAnimations(elapsedSeconds);
+            if (viewModel.IsAnimationActive) RotationGizmo.Refresh();
         }
     }
 
@@ -533,16 +582,12 @@ public sealed partial class MainWindow : Window
         }
 
         _lastPointerPosition = null;
-        _isTiltingView = false;
+        _dragMode = ViewportDragMode.None;
+        _gizmoAxis = RotationGizmoAxis.None;
+        _gizmoStartRotation = null;
+        _gizmoDragDegrees = 0f;
+        RotationGizmo.ClearDrag();
         pointer.Capture(null);
-    }
-
-    private void ResetTilt_Click(object? sender, RoutedEventArgs e)
-    {
-        if (DataContext is MainWindowViewModel viewModel)
-        {
-            viewModel.ResetTilt();
-        }
     }
 
     private async void Window_KeyDown(object? sender, KeyEventArgs e)
@@ -581,7 +626,19 @@ public sealed partial class MainWindow : Window
         }
         else if (e.Key == Key.Escape)
         {
-            viewModel.ClearSelection();
+            if (_dragMode == ViewportDragMode.Gizmo && _gizmoStartRotation is not null)
+            {
+                viewModel.RestoreObjectRotation(_gizmoStartRotation);
+                _lastPointerPosition = null;
+                _dragMode = ViewportDragMode.None;
+                _gizmoAxis = RotationGizmoAxis.None;
+                _gizmoStartRotation = null;
+                RotationGizmo.ClearDrag();
+            }
+            else
+            {
+                viewModel.ClearSelection();
+            }
             e.Handled = true;
         }
     }
@@ -816,5 +873,13 @@ public sealed partial class MainWindow : Window
         Cancel,
         Save,
         Discard,
+    }
+
+    private enum ViewportDragMode
+    {
+        None,
+        Orbit,
+        Pan,
+        Gizmo,
     }
 }

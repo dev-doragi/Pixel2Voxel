@@ -1,3 +1,5 @@
+using System.Numerics;
+
 namespace PixelVoxel.Rendering;
 
 /// <summary>Identifies whether the camera is output-stable or freely inspectable.</summary>
@@ -44,6 +46,9 @@ public sealed record VoxelCameraState(
     float PanY,
     float Zoom)
 {
+    /// <summary>Gets the normalized Unity-style orbit orientation.</summary>
+    public Quaternion Orientation => VoxelOrientation.FromYawPitchRoll(YawDegrees, PitchDegrees, 0f);
+
     /// <summary>Creates the default 2:1 pixel preview camera.</summary>
     public static VoxelCameraState Pixel2To1() =>
         new(VoxelViewMode.PixelPreview, VoxelCameraPreset.Pixel2To1, -45f, -30f, 0f, 0f, 1f);

@@ -3,9 +3,9 @@ namespace PixelVoxel.Rendering.Tests;
 public sealed class VoxelCameraMotionTests
 {
     [Fact]
-    public void FaceSnapUsesFiveDegreeDefaultThreshold()
+    public void FaceSnapUsesTwoDegreeDefaultThreshold()
     {
-        Assert.Equal(5f, VoxelCameraMotion.DefaultFaceSnapThresholdDegrees);
+        Assert.Equal(2f, VoxelCameraMotion.DefaultFaceSnapThresholdDegrees);
     }
 
     [Fact]
@@ -36,7 +36,7 @@ public sealed class VoxelCameraMotionTests
     [InlineData(181f, -179f)]
     [InlineData(-181f, 179f)]
     [InlineData(540f, -180f)]
-    public void HorizontalAnimationWraps(float input, float expected)
+    public void AnimationAngleWraps(float input, float expected)
     {
         Assert.Equal(expected, VoxelCameraMotion.WrapAngle(input));
     }
@@ -44,7 +44,7 @@ public sealed class VoxelCameraMotionTests
     [Theory]
     [InlineData(179f, 3f, -178f)]
     [InlineData(-179f, -3f, 178f)]
-    public void VerticalAnimationWrapsThroughAFullRotation(
+    public void AnimationWrapsThroughAFullRotation(
         float pitch,
         float delta,
         float expected)
@@ -53,10 +53,10 @@ public sealed class VoxelCameraMotionTests
     }
 
     [Theory]
-    [InlineData(2f, -3f, 0f, 0f)]
+    [InlineData(2f, -2f, 0f, 0f)]
     [InlineData(-88f, 2f, -90f, 0f)]
     [InlineData(92f, -1f, 90f, 0f)]
-    [InlineData(179f, 3f, -180f, 0f)]
+    [InlineData(179f, 2f, -180f, 0f)]
     public void CameraSnapsToSideFacesWithinDefaultThreshold(
         float yaw,
         float pitch,
