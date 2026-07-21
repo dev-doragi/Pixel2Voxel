@@ -14,6 +14,7 @@ internal sealed class PixelRasterSurface
         Depth = Enumerable.Repeat(float.NegativeInfinity, count).ToArray();
         Normals = new Vector3[count];
         Coverage = new bool[count];
+        EditorMask = new float[count];
     }
 
     public int Width { get; }
@@ -27,4 +28,6 @@ internal sealed class PixelRasterSurface
     public Vector3[] Normals { get; }
 
     public bool[] Coverage { get; }
+
+    public float[] EditorMask { get; }
 }

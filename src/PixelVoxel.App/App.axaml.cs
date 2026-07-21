@@ -7,6 +7,7 @@ using PixelVoxel.App.Views;
 using PixelVoxel.Core;
 using PixelVoxel.Imaging;
 using PixelVoxel.Rendering;
+using PixelVoxel.Export;
 
 namespace PixelVoxel.App;
 
@@ -21,14 +22,23 @@ public sealed partial class App : Application
     {
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
+            PixelArtVoxelRasterizer rasterizer = new();
+            VoxelRenderTransformResolver transformResolver = new();
+            SpriteExportCoordinator exportCoordinator = new(
+                rasterizer,
+                transformResolver,
+                new SpriteSheetExporter(new PngPixelWriter()));
             MainWindowViewModel viewModel = new(
                 new AsepriteSpriteSheetImporter(),
                 new VisualHullVoxelReconstructor(),
                 new VoxelSurfaceMesher(),
-                new PixelArtVoxelRasterizer(),
-                new VoxelRenderTransformResolver(),
+                rasterizer,
+                transformResolver,
                 new PixelRenderLayoutResolver(),
-                new ViewportSettingsStore());
+                new ViewportSettingsStore(),
+                exportCoordinator,
+                new PxvProjectSerializer(new PngPixelWriter(), new PngPixelReader()),
+                new VoxelPicker());
 
             desktop.MainWindow = new MainWindow
             {

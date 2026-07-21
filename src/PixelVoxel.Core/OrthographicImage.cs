@@ -43,6 +43,9 @@ public sealed class OrthographicImage
     /// <summary>Gets the image height.</summary>
     public int Height { get; }
 
+    /// <summary>Gets pixels in top-left, row-major order.</summary>
+    public ReadOnlyMemory<Rgba32Color> Pixels => _pixels;
+
     /// <summary>
     /// Gets a pixel using top-left image coordinates.
     /// </summary>
@@ -61,4 +64,3 @@ public sealed class OrthographicImage
         return _pixels[(y * Width) + x];
     }
 }
-

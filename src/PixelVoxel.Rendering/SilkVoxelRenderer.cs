@@ -11,15 +11,18 @@ public sealed unsafe class SilkVoxelRenderer
         layout(location = 0) in vec3 aPosition;
         layout(location = 1) in vec4 aColor;
         layout(location = 2) in vec3 aNormal;
+        layout(location = 3) in float aEditorMask;
         uniform mat4 uTransform;
         uniform mat4 uModelRotation;
         out vec4 vColor;
         flat out vec3 vNormal;
+        flat out float vEditorMask;
         void main()
         {
             gl_Position = uTransform * vec4(aPosition, 1.0);
             vColor = aColor;
             vNormal = normalize(mat3(uModelRotation) * aNormal);
+            vEditorMask = aEditorMask;
         }
         """;
 
@@ -27,12 +30,13 @@ public sealed unsafe class SilkVoxelRenderer
         #version 330 core
         in vec4 vColor;
         flat in vec3 vNormal;
+        flat in float vEditorMask;
         layout(location = 0) out vec4 outputColor;
         layout(location = 1) out vec4 outputNormal;
         void main()
         {
             outputColor = vec4(vColor.rgb, 1.0);
-            outputNormal = vec4((normalize(vNormal) * 0.5) + 0.5, 1.0);
+            outputNormal = vec4((normalize(vNormal) * 0.5) + 0.5, vEditorMask);
         }
         """;
 
@@ -42,15 +46,18 @@ public sealed unsafe class SilkVoxelRenderer
         layout(location = 0) in vec3 aPosition;
         layout(location = 1) in vec4 aColor;
         layout(location = 2) in vec3 aNormal;
+        layout(location = 3) in float aEditorMask;
         uniform mat4 uTransform;
         uniform mat4 uModelRotation;
         out vec4 vColor;
         flat out vec3 vNormal;
+        flat out float vEditorMask;
         void main()
         {
             gl_Position = uTransform * vec4(aPosition, 1.0);
             vColor = aColor;
             vNormal = normalize(mat3(uModelRotation) * aNormal);
+            vEditorMask = aEditorMask;
         }
         """;
 
@@ -60,12 +67,13 @@ public sealed unsafe class SilkVoxelRenderer
         precision highp sampler2D;
         in vec4 vColor;
         flat in vec3 vNormal;
+        flat in float vEditorMask;
         layout(location = 0) out vec4 outputColor;
         layout(location = 1) out vec4 outputNormal;
         void main()
         {
             outputColor = vec4(vColor.rgb, 1.0);
-            outputNormal = vec4((normalize(vNormal) * 0.5) + 0.5, 1.0);
+            outputNormal = vec4((normalize(vNormal) * 0.5) + 0.5, vEditorMask);
         }
         """;
 
@@ -151,6 +159,19 @@ public sealed unsafe class SilkVoxelRenderer
                 }
             }
 
+            float editorMask = texelFetch(uNormalTexture, p, 0).a;
+            bool editorOutline = false;
+            if (centerCovered && editorMask > 0.1)
+            {
+                ivec2 editorOffsets[4] = ivec2[4](ivec2(-1,0), ivec2(1,0), ivec2(0,-1), ivec2(0,1));
+                for (int i = 0; i < 4; i++)
+                {
+                    ivec2 q = p + editorOffsets[i];
+                    if (!inside(q, size) || !covered(q) ||
+                        abs(texelFetch(uNormalTexture, q, 0).a - editorMask) > 0.1) editorOutline = true;
+                }
+            }
+
             vec3 litColor = center.rgb;
             if (centerCovered && uLightingEnabled != 0)
             {
@@ -160,7 +181,8 @@ public sealed unsafe class SilkVoxelRenderer
                 float brightness = clamp(uAmbient + (uIntensity * level), 0.0, 1.0);
                 litColor *= brightness;
             }
-            outputColor = outline ? uOutlineColor : (centerCovered ? vec4(litColor, 1.0) : uBackgroundColor);
+            vec4 editorColor = editorMask > 0.75 ? vec4(1.0, 0.835, 0.29, 1.0) : vec4(0.0, 0.843, 1.0, 1.0);
+            outputColor = editorOutline ? editorColor : (outline ? uOutlineColor : (centerCovered ? vec4(litColor, 1.0) : uBackgroundColor));
         }
         """;
 
@@ -217,6 +239,19 @@ public sealed unsafe class SilkVoxelRenderer
                 }
             }
 
+            float editorMask = texelFetch(uNormalTexture, p, 0).a;
+            bool editorOutline = false;
+            if (centerCovered && editorMask > 0.1)
+            {
+                ivec2 editorOffsets[4] = ivec2[4](ivec2(-1,0), ivec2(1,0), ivec2(0,-1), ivec2(0,1));
+                for (int i = 0; i < 4; i++)
+                {
+                    ivec2 q = p + editorOffsets[i];
+                    if (!inside(q, size) || !covered(q) ||
+                        abs(texelFetch(uNormalTexture, q, 0).a - editorMask) > 0.1) editorOutline = true;
+                }
+            }
+
             vec3 litColor = center.rgb;
             if (centerCovered && uLightingEnabled != 0)
             {
@@ -226,7 +261,8 @@ public sealed unsafe class SilkVoxelRenderer
                 float brightness = clamp(uAmbient + (uIntensity * level), 0.0, 1.0);
                 litColor *= brightness;
             }
-            outputColor = outline ? uOutlineColor : (centerCovered ? vec4(litColor, 1.0) : uBackgroundColor);
+            vec4 editorColor = editorMask > 0.75 ? vec4(1.0, 0.835, 0.29, 1.0) : vec4(0.0, 0.843, 1.0, 1.0);
+            outputColor = editorOutline ? editorColor : (outline ? uOutlineColor : (centerCovered ? vec4(litColor, 1.0) : uBackgroundColor));
         }
         """;
 
@@ -429,16 +465,14 @@ public sealed unsafe class SilkVoxelRenderer
         gl.ClearColor(background.X, background.Y, background.Z, background.W);
         gl.Clear(ClearBufferMask.ColorBufferBit);
 
-        int fitScale = Math.Max(
-            1,
-            Math.Min(targetWidth / layout.Width, targetHeight / layout.Height));
-        int scale = manualScale.HasValue
-            ? Math.Clamp(manualScale.Value, 1, 16)
-            : fitScale;
-        int destinationWidth = layout.Width * scale;
-        int destinationHeight = layout.Height * scale;
-        int destinationX = (targetWidth - destinationWidth) / 2;
-        int destinationY = (targetHeight - destinationHeight) / 2;
+        PixelViewportMapping mapping = PixelViewportMapping.Create(
+            targetWidth,
+            targetHeight,
+            layout.Width,
+            layout.Height,
+            manualScale);
+        int destinationWidth = layout.Width * mapping.Scale;
+        int destinationHeight = layout.Height * mapping.Scale;
 
         gl.BindFramebuffer(FramebufferTarget.ReadFramebuffer, _outputFramebuffer);
         gl.BlitFramebuffer(
@@ -446,10 +480,10 @@ public sealed unsafe class SilkVoxelRenderer
             0,
             layout.Width,
             layout.Height,
-            destinationX,
-            destinationY,
-            destinationX + destinationWidth,
-            destinationY + destinationHeight,
+            mapping.DestinationX,
+            mapping.DestinationY,
+            mapping.DestinationX + destinationWidth,
+            mapping.DestinationY + destinationHeight,
             ClearBufferMask.ColorBufferBit,
             BlitFramebufferFilter.Nearest);
         gl.BindFramebuffer(FramebufferTarget.Framebuffer, targetFramebuffer);
@@ -471,11 +505,11 @@ public sealed unsafe class SilkVoxelRenderer
 
         _pendingMesh = null;
         ReadOnlySpan<VoxelMeshVertex> vertices = mesh.Vertices.Span;
-        float[] interleaved = new float[checked(vertices.Length * 10)];
+        float[] interleaved = new float[checked(vertices.Length * 11)];
         for (int index = 0; index < vertices.Length; index++)
         {
             VoxelMeshVertex vertex = vertices[index];
-            int offset = index * 10;
+            int offset = index * 11;
             interleaved[offset] = vertex.Position.X;
             interleaved[offset + 1] = vertex.Position.Y;
             interleaved[offset + 2] = vertex.Position.Z;
@@ -486,6 +520,7 @@ public sealed unsafe class SilkVoxelRenderer
             interleaved[offset + 7] = vertex.Normal.X;
             interleaved[offset + 8] = vertex.Normal.Y;
             interleaved[offset + 9] = vertex.Normal.Z;
+            interleaved[offset + 10] = vertex.EditorMask;
         }
 
         uint[] indices = mesh.Indices.ToArray();
@@ -510,13 +545,15 @@ public sealed unsafe class SilkVoxelRenderer
                 BufferUsageARB.StaticDraw);
         }
 
-        const uint stride = 10 * sizeof(float);
+        const uint stride = 11 * sizeof(float);
         gl.EnableVertexAttribArray(0);
         gl.VertexAttribPointer(0, 3, VertexAttribPointerType.Float, false, stride, null);
         gl.EnableVertexAttribArray(1);
         gl.VertexAttribPointer(1, 4, VertexAttribPointerType.Float, false, stride, (void*)(3 * sizeof(float)));
         gl.EnableVertexAttribArray(2);
         gl.VertexAttribPointer(2, 3, VertexAttribPointerType.Float, false, stride, (void*)(7 * sizeof(float)));
+        gl.EnableVertexAttribArray(3);
+        gl.VertexAttribPointer(3, 1, VertexAttribPointerType.Float, false, stride, (void*)(10 * sizeof(float)));
         _indexCount = indices.Length;
     }
 

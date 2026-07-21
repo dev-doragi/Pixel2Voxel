@@ -1,5 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using PixelVoxel.Core;
+using PixelVoxel.Imaging;
 using PixelVoxel.Rendering;
 
 namespace PixelVoxel.App.Services;
@@ -7,11 +9,13 @@ namespace PixelVoxel.App.Services;
 /// <summary>Stores user-owned viewport preferences independently from project files.</summary>
 public sealed record ViewportUserSettings
 {
-    public int Version { get; init; } = 1;
+    public int Version { get; init; } = 2;
 
     public float DefaultYaw { get; init; } = -45f;
 
     public float DefaultPitch { get; init; } = -30f;
+
+    public bool CameraFaceSnapEnabled { get; init; } = true;
 
     public bool ZoomIsFit { get; init; } = true;
 
@@ -36,6 +40,45 @@ public sealed record ViewportUserSettings
     public string OutlineColor { get; init; } = "#000000";
 
     public string BackgroundColor { get; init; } = "#141820";
+
+    public int ExportDirectionCount { get; init; } = 8;
+
+    public bool ExportTrueIsometric { get; init; }
+
+    public bool ExportTransparentBackground { get; init; } = true;
+
+    public IReadOnlyList<RecentImportSettings> RecentImports { get; init; } = [];
+}
+
+/// <summary>Stores one recent import source and its reusable alignment.</summary>
+public sealed record RecentImportSettings
+{
+    public SixViewImportSourceKind SourceKind { get; init; }
+
+    public IReadOnlyList<string> Paths { get; init; } = [];
+
+    public IReadOnlyList<RecentFaceAlignmentSettings> Alignments { get; init; } = [];
+
+    [JsonIgnore]
+    public string DisplayName => Paths.Count == 0
+        ? "Missing import"
+        : Path.GetFileName(Paths[0]);
+}
+
+/// <summary>Stores one recent source-to-face mapping and pixel alignment.</summary>
+public sealed record RecentFaceAlignmentSettings
+{
+    public int SourceSlotIndex { get; init; }
+
+    public VoxelFace TargetFace { get; init; }
+
+    public bool FlipHorizontal { get; init; }
+
+    public bool FlipVertical { get; init; }
+
+    public int OffsetX { get; init; }
+
+    public int OffsetY { get; init; }
 }
 
 /// <summary>Loads and atomically saves debounced viewport settings.</summary>
@@ -72,12 +115,14 @@ public sealed class ViewportSettingsStore : IDisposable
             ViewportUserSettings? settings = JsonSerializer.Deserialize<ViewportUserSettings>(
                 File.ReadAllText(_path),
                 JsonOptions);
-            if (settings is null || settings.Version != 1)
+            if (settings is null || settings.Version is not (1 or 2))
             {
                 return (new ViewportUserSettings(), "Viewport settings were reset because their version is unsupported.");
             }
 
-            return (settings, null);
+            return settings.Version == 1
+                ? (settings with { Version = 2 }, "Viewport settings were upgraded to version 2.")
+                : (settings, null);
         }
         catch (Exception exception) when (
             exception is IOException or UnauthorizedAccessException or JsonException)

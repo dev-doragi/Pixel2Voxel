@@ -16,30 +16,68 @@ internal static class PixelSurfacePostProcessor
                 : style.Background;
         }
 
-        if (!style.Outline.Enabled)
+        Rgba32Color[] outlined = output;
+        if (style.Outline.Enabled)
         {
-            return new PixelFramebuffer(surface.Width, surface.Height, output);
+            outlined = (Rgba32Color[])output.Clone();
+            for (int y = 0; y < surface.Height; y++)
+            {
+                for (int x = 0; x < surface.Width; x++)
+                {
+                    int index = (y * surface.Width) + x;
+                    bool drawOutline = surface.Coverage[index]
+                        ? style.Outline.Mode == VoxelOutlineMode.SilhouetteAndDepth &&
+                          HasInternalBoundary(surface, x, y, index, style.Outline.DepthThreshold)
+                        : HasCoveredNeighbor(surface, x, y);
+
+                    if (drawOutline)
+                    {
+                        outlined[index] = style.Outline.Color;
+                    }
+                }
+            }
         }
 
-        Rgba32Color[] outlined = (Rgba32Color[])output.Clone();
+        ApplyEditorOutline(surface, outlined);
+
+        return new PixelFramebuffer(surface.Width, surface.Height, outlined);
+    }
+
+    private static void ApplyEditorOutline(PixelRasterSurface surface, Rgba32Color[] output)
+    {
+        Rgba32Color selectionColor = new(0, 215, 255, 255);
+        Rgba32Color hoverColor = new(255, 213, 74, 255);
         for (int y = 0; y < surface.Height; y++)
         {
             for (int x = 0; x < surface.Width; x++)
             {
                 int index = (y * surface.Width) + x;
-                bool drawOutline = surface.Coverage[index]
-                    ? style.Outline.Mode == VoxelOutlineMode.SilhouetteAndDepth &&
-                      HasInternalBoundary(surface, x, y, index, style.Outline.DepthThreshold)
-                    : HasCoveredNeighbor(surface, x, y);
-
-                if (drawOutline)
+                float mask = surface.EditorMask[index];
+                if (!surface.Coverage[index] || mask <= 0f) continue;
+                ReadOnlySpan<(int X, int Y)> offsets =
+                    [(-1, 0), (1, 0), (0, -1), (0, 1)];
+                bool boundary = false;
+                foreach ((int offsetX, int offsetY) in offsets)
                 {
-                    outlined[index] = style.Outline.Color;
+                    int neighborX = x + offsetX;
+                    int neighborY = y + offsetY;
+                    if (!IsInside(surface, neighborX, neighborY))
+                    {
+                        boundary = true;
+                        break;
+                    }
+
+                    int neighbor = (neighborY * surface.Width) + neighborX;
+                    if (!surface.Coverage[neighbor] || MathF.Abs(surface.EditorMask[neighbor] - mask) > 0.1f)
+                    {
+                        boundary = true;
+                        break;
+                    }
                 }
+
+                if (boundary) output[index] = mask > 0.75f ? hoverColor : selectionColor;
             }
         }
-
-        return new PixelFramebuffer(surface.Width, surface.Height, outlined);
     }
 
     internal static Rgba32Color ApplyLighting(

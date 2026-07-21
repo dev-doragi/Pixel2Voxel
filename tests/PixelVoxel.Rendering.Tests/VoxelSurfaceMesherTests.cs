@@ -18,6 +18,7 @@ public sealed class VoxelSurfaceMesherTests
         Assert.Equal(24, result.Mesh!.Vertices.Length);
         Assert.Equal(36, result.Mesh.Indices.Length);
         Assert.Equal(6, result.Mesh.FaceNormals.Length);
+        Assert.Equal(6, result.Mesh.Faces.Length);
 
         Rgba32Color[] expectedColors =
         [

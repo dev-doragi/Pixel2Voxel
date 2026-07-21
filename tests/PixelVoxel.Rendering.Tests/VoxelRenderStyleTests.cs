@@ -103,6 +103,37 @@ public sealed class VoxelRenderStyleTests
         Assert.All(outlineIndices, index => Assert.True(HasCoveredNeighbor(index, outlined.Width, outlined.Height, coverage)));
     }
 
+    [Fact]
+    public void EditorSelectionAndHoverUseViewportOnlyPixelOutlines()
+    {
+        VoxelMeshData baseMesh = CreateMesh();
+        VoxelSelectionBox selection = new(new VoxelCoordinate(0, 0, 0), new VoxelCoordinate(0, 0, 0));
+        VoxelMeshData selected = baseMesh.WithEditorOverlay(selection, null);
+        VoxelMeshData hovered = baseMesh.WithEditorOverlay(
+            null,
+            new VoxelPickResult(
+                new VoxelCoordinate(0, 0, 0),
+                VoxelFace.Front,
+                new VoxelCoordinate(0, 0, 1),
+                1f));
+        VoxelRenderStyle style = VoxelRenderStyle.Default with
+        {
+            Lighting = VoxelLightingSettings.Default with { Enabled = false },
+            Outline = VoxelOutlineSettings.Default with { Enabled = false },
+        };
+
+        PixelFramebuffer selectedFrame = Render(selected, style);
+        PixelFramebuffer hoveredFrame = new PixelArtVoxelRasterizer().Render(
+            hovered,
+            FrontCamera(),
+            new PixelRenderLayoutResolver().Resolve(hovered.Dimensions, 8, 8),
+            style);
+
+        Assert.Contains(new Rgba32Color(0, 215, 255, 255), selectedFrame.Pixels.ToArray());
+        Assert.Contains(new Rgba32Color(255, 213, 74, 255), hoveredFrame.Pixels.ToArray());
+        Assert.DoesNotContain(baseMesh.Vertices.ToArray(), vertex => vertex.EditorMask != 0f);
+    }
+
     private static PixelFramebuffer Render(VoxelMeshData mesh, VoxelRenderStyle style)
     {
         PixelRenderLayout layout = new PixelRenderLayoutResolver().Resolve(mesh.Dimensions, 8, 8);

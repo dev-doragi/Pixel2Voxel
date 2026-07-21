@@ -3,6 +3,12 @@ namespace PixelVoxel.Rendering.Tests;
 public sealed class VoxelCameraMotionTests
 {
     [Fact]
+    public void FaceSnapUsesFiveDegreeDefaultThreshold()
+    {
+        Assert.Equal(5f, VoxelCameraMotion.DefaultFaceSnapThresholdDegrees);
+    }
+
+    [Fact]
     public void OrbitDragUsesReversedHorizontalAndExistingVerticalDirections()
     {
         Assert.Equal(-38f, VoxelCameraMotion.RotateYaw(-45f, 10f, 0.7f));
@@ -45,4 +51,67 @@ public sealed class VoxelCameraMotionTests
     {
         Assert.Equal(expected, VoxelCameraMotion.WrapAngle(pitch + delta));
     }
+
+    [Theory]
+    [InlineData(2f, -3f, 0f, 0f)]
+    [InlineData(-88f, 2f, -90f, 0f)]
+    [InlineData(92f, -1f, 90f, 0f)]
+    [InlineData(179f, 3f, -180f, 0f)]
+    public void CameraSnapsToSideFacesWithinDefaultThreshold(
+        float yaw,
+        float pitch,
+        float expectedYaw,
+        float expectedPitch)
+    {
+        VoxelCameraFaceSnap result = VoxelCameraMotion.SnapToFace(yaw, pitch);
+
+        Assert.True(result.IsSnapped);
+        Assert.Equal(expectedYaw, result.YawDegrees);
+        Assert.Equal(expectedPitch, result.PitchDegrees);
+    }
+
+    [Theory]
+    [InlineData(37f, -88f, 0f, -90f)]
+    [InlineData(52f, -88f, 90f, -90f)]
+    [InlineData(-123f, 89f, -90f, 90f)]
+    [InlineData(136f, 89f, -180f, 90f)]
+    public void CameraSnapsToTopAndBottomWithNearestQuarterTurnRotation(
+        float yaw,
+        float pitch,
+        float expectedYaw,
+        float expectedPitch)
+    {
+        VoxelCameraFaceSnap result = VoxelCameraMotion.SnapToFace(yaw, pitch);
+
+        Assert.True(result.IsSnapped);
+        Assert.Equal(expectedYaw, result.YawDegrees);
+        Assert.Equal(expectedPitch, result.PitchDegrees);
+    }
+
+    [Fact]
+    public void CameraReturnsRawRotationAfterLeavingTopFaceThreshold()
+    {
+        const float rawYaw = 37f;
+        float rawPitch = -90f + VoxelCameraMotion.DefaultFaceSnapThresholdDegrees + 1f;
+
+        VoxelCameraFaceSnap result = VoxelCameraMotion.SnapToFace(rawYaw, rawPitch);
+
+        Assert.False(result.IsSnapped);
+        Assert.Equal(rawYaw, result.YawDegrees);
+        Assert.Equal(rawPitch, result.PitchDegrees);
+    }
+
+    [Fact]
+    public void CameraDoesNotSnapOutsideTheFaceThreshold()
+    {
+        float offset = VoxelCameraMotion.DefaultFaceSnapThresholdDegrees + 1f;
+        float yaw = 90f - offset;
+
+        VoxelCameraFaceSnap result = VoxelCameraMotion.SnapToFace(yaw, offset);
+
+        Assert.False(result.IsSnapped);
+        Assert.Equal(yaw, result.YawDegrees);
+        Assert.Equal(offset, result.PitchDegrees);
+    }
+
 }

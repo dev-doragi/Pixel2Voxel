@@ -1,6 +1,7 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="using:PixelVoxel.App.ViewModels"
+        xmlns:services="using:PixelVoxel.App.Services"
         xmlns:views="using:PixelVoxel.App.Views"
         x:Class="PixelVoxel.App.Views.MainWindow"
         x:DataType="vm:MainWindowViewModel"
@@ -8,13 +9,25 @@
         Height="820"
         MinWidth="960"
         MinHeight="600"
-        Title="Pixel Voxel">
+        Title="{Binding WindowTitle}"
+        KeyDown="Window_KeyDown">
   <Grid RowDefinitions="Auto,*,Auto">
     <Menu Grid.Row="0">
       <MenuItem Header="File">
+        <MenuItem Header="New Project" Click="NewProject_Click" />
+        <MenuItem Header="Open Project..." Click="OpenProject_Click" />
+        <MenuItem Header="Save Project" IsEnabled="{Binding HasDocument}" Click="SaveProject_Click" />
+        <MenuItem Header="Save Project As..." IsEnabled="{Binding HasDocument}" Click="SaveProjectAs_Click" />
+        <Separator />
         <MenuItem Header="Import 6×1 Sheet..." Click="OpenHorizontalSheet_Click" />
       </MenuItem>
-      <MenuItem Header="Edit" />
+      <MenuItem Header="Edit">
+        <MenuItem Header="Undo" IsEnabled="{Binding CanUndo}" Click="Undo_Click" />
+        <MenuItem Header="Redo" IsEnabled="{Binding CanRedo}" Click="Redo_Click" />
+        <Separator />
+        <MenuItem Header="Delete Selection" Click="DeleteSelection_Click" />
+        <MenuItem Header="Clear Selection" Click="ClearSelection_Click" />
+      </MenuItem>
       <MenuItem Header="View">
         <MenuItem Header="Pixel 2:1" Tag="Pixel2To1" Click="SelectPreset_Click" />
         <MenuItem Header="True Isometric" Tag="TrueIsometric" Click="SelectPreset_Click" />
@@ -23,57 +36,140 @@
         <MenuItem Header="Top" Tag="Top" Click="SelectPreset_Click" />
       </MenuItem>
       <MenuItem Header="Model" />
-      <MenuItem Header="Export" />
+      <MenuItem Header="Export">
+        <MenuItem Header="Export Current View PNG..."
+                  IsEnabled="{Binding CanExport}"
+                  Click="ExportCurrentView_Click" />
+        <MenuItem Header="Export Direction Sheet..."
+                  IsEnabled="{Binding CanExport}"
+                  Click="ExportDirectionSheet_Click" />
+      </MenuItem>
       <MenuItem Header="Help" />
     </Menu>
 
-    <Grid Grid.Row="1" ColumnDefinitions="300,*,320">
+    <Grid Grid.Row="1" ColumnDefinitions="430,*,340">
       <Border Grid.Column="0"
               Padding="14"
               BorderBrush="{DynamicResource ThemeBorderLowBrush}"
               BorderThickness="0,0,1,0">
         <ScrollViewer>
           <StackPanel Spacing="10">
-            <TextBlock Text="Import" FontSize="16" FontWeight="SemiBold" />
-            <Button HorizontalAlignment="Stretch"
-                    Click="OpenHorizontalSheet_Click"
-                    Content="Import 6×1 Sheet" />
-            <TextBlock Text="Fixed order: Front, Right, Back, Left, Top, Bottom"
-                       TextWrapping="Wrap"
-                       Opacity="0.72" />
-
-            <Separator Margin="0,6" />
-            <TextBlock Text="Separate six PNG files" FontWeight="SemiBold" />
-            <Grid ColumnDefinitions="72,*"
-                  RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto">
-              <Button Grid.Row="0" Tag="Front" Click="SelectFaceFile_Click" Content="Front" />
-              <TextBlock Grid.Row="0" Grid.Column="1" Margin="8,0,0,0"
-                         VerticalAlignment="Center" Text="{Binding FrontPath}" TextTrimming="CharacterEllipsis" />
-              <Button Grid.Row="1" Tag="Right" Click="SelectFaceFile_Click" Content="Right" />
-              <TextBlock Grid.Row="1" Grid.Column="1" Margin="8,0,0,0"
-                         VerticalAlignment="Center" Text="{Binding RightPath}" TextTrimming="CharacterEllipsis" />
-              <Button Grid.Row="2" Tag="Back" Click="SelectFaceFile_Click" Content="Back" />
-              <TextBlock Grid.Row="2" Grid.Column="1" Margin="8,0,0,0"
-                         VerticalAlignment="Center" Text="{Binding BackPath}" TextTrimming="CharacterEllipsis" />
-              <Button Grid.Row="3" Tag="Left" Click="SelectFaceFile_Click" Content="Left" />
-              <TextBlock Grid.Row="3" Grid.Column="1" Margin="8,0,0,0"
-                         VerticalAlignment="Center" Text="{Binding LeftPath}" TextTrimming="CharacterEllipsis" />
-              <Button Grid.Row="4" Tag="Top" Click="SelectFaceFile_Click" Content="Top" />
-              <TextBlock Grid.Row="4" Grid.Column="1" Margin="8,0,0,0"
-                         VerticalAlignment="Center" Text="{Binding TopPath}" TextTrimming="CharacterEllipsis" />
-              <Button Grid.Row="5" Tag="Bottom" Click="SelectFaceFile_Click" Content="Bottom" />
-              <TextBlock Grid.Row="5" Grid.Column="1" Margin="8,0,0,0"
-                         VerticalAlignment="Center" Text="{Binding BottomPath}" TextTrimming="CharacterEllipsis" />
+            <TextBlock Text="Import Alignment" FontSize="16" FontWeight="SemiBold" />
+            <Grid ColumnDefinitions="*,*">
+              <Border Grid.Column="0" Margin="0,0,4,0" Padding="10"
+                      BorderBrush="{DynamicResource ThemeBorderMidBrush}" BorderThickness="1"
+                      DragDrop.AllowDrop="True"
+                      DragDrop.DragOver="PngDrop_DragOver"
+                      DragDrop.Drop="SheetDrop_Drop">
+                <StackPanel Spacing="6">
+                  <TextBlock Text="6×1 Sheet Drop" FontWeight="SemiBold" />
+                  <Button Click="OpenHorizontalSheet_Click" Content="Choose Sheet..." />
+                </StackPanel>
+              </Border>
+              <Border Grid.Column="1" Margin="4,0,0,0" Padding="10"
+                      BorderBrush="{DynamicResource ThemeBorderMidBrush}" BorderThickness="1"
+                      DragDrop.AllowDrop="True"
+                      DragDrop.DragOver="PngDrop_DragOver"
+                      DragDrop.Drop="SeparateDrop_Drop">
+                <StackPanel Spacing="6">
+                  <TextBlock Text="Separate PNG Drop" FontWeight="SemiBold" />
+                  <Button Click="ChooseSeparateFiles_Click" Content="Choose PNGs..." />
+                </StackPanel>
+              </Border>
             </Grid>
-            <Button HorizontalAlignment="Stretch"
-                    Click="ReconstructSeparate_Click"
-                    Content="Reconstruct Separate Views" />
+
+            <Expander Header="Assign separate files manually">
+              <StackPanel Spacing="6">
+                <Grid ColumnDefinitions="72,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto">
+                  <Button Grid.Row="0" Tag="Front" Click="SelectFaceFile_Click" Content="Front" />
+                  <TextBlock Grid.Row="0" Grid.Column="1" Margin="8,0,0,0" VerticalAlignment="Center" Text="{Binding FrontPath}" TextTrimming="CharacterEllipsis" />
+                  <Button Grid.Row="1" Tag="Right" Click="SelectFaceFile_Click" Content="Right" />
+                  <TextBlock Grid.Row="1" Grid.Column="1" Margin="8,0,0,0" VerticalAlignment="Center" Text="{Binding RightPath}" TextTrimming="CharacterEllipsis" />
+                  <Button Grid.Row="2" Tag="Back" Click="SelectFaceFile_Click" Content="Back" />
+                  <TextBlock Grid.Row="2" Grid.Column="1" Margin="8,0,0,0" VerticalAlignment="Center" Text="{Binding BackPath}" TextTrimming="CharacterEllipsis" />
+                  <Button Grid.Row="3" Tag="Left" Click="SelectFaceFile_Click" Content="Left" />
+                  <TextBlock Grid.Row="3" Grid.Column="1" Margin="8,0,0,0" VerticalAlignment="Center" Text="{Binding LeftPath}" TextTrimming="CharacterEllipsis" />
+                  <Button Grid.Row="4" Tag="Top" Click="SelectFaceFile_Click" Content="Top" />
+                  <TextBlock Grid.Row="4" Grid.Column="1" Margin="8,0,0,0" VerticalAlignment="Center" Text="{Binding TopPath}" TextTrimming="CharacterEllipsis" />
+                  <Button Grid.Row="5" Tag="Bottom" Click="SelectFaceFile_Click" Content="Bottom" />
+                  <TextBlock Grid.Row="5" Grid.Column="1" Margin="8,0,0,0" VerticalAlignment="Center" Text="{Binding BottomPath}" TextTrimming="CharacterEllipsis" />
+                </Grid>
+                <Button Click="ReconstructSeparate_Click" Content="Inspect Assigned Views" />
+              </StackPanel>
+            </Expander>
+
+            <Grid ColumnDefinitions="*,Auto">
+              <ComboBox ItemsSource="{Binding RecentImports}"
+                        SelectedItem="{Binding SelectedRecentImport}"
+                        PlaceholderText="Recent imports">
+                <ComboBox.ItemTemplate>
+                  <DataTemplate x:DataType="services:RecentImportSettings">
+                    <TextBlock Text="{Binding DisplayName}" />
+                  </DataTemplate>
+                </ComboBox.ItemTemplate>
+              </ComboBox>
+              <Button Grid.Column="1" Margin="8,0,0,0" Click="OpenRecentImport_Click" Content="Open" />
+            </Grid>
+
+            <ItemsControl ItemsSource="{Binding ImportFaceSlots}" IsVisible="{Binding IsImportDraftLoaded}">
+              <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate>
+                  <UniformGrid Columns="2" />
+                </ItemsPanelTemplate>
+              </ItemsControl.ItemsPanel>
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:ImportFaceSlotViewModel">
+                  <Border Margin="3" Padding="7"
+                          BorderBrush="{DynamicResource ThemeBorderMidBrush}" BorderThickness="1"
+                          DragDrop.AllowDrop="True"
+                          DragDrop.DragOver="ImportFaceCard_DragOver"
+                          DragDrop.Drop="ImportFaceCard_Drop">
+                    <StackPanel Spacing="5">
+                      <Border Padding="4" Background="#323741"
+                              PointerPressed="ImportFaceHeader_PointerPressed">
+                        <Grid ColumnDefinitions="*,Auto">
+                          <TextBlock Text="{Binding TargetFace}" FontWeight="SemiBold" />
+                          <TextBlock Grid.Column="1" Text="↕ drag" Opacity="0.65" />
+                        </Grid>
+                      </Border>
+                      <TextBlock Text="{Binding SourceName}" FontSize="11" TextTrimming="CharacterEllipsis" />
+                      <Grid Height="112" ClipToBounds="True">
+                        <views:CheckerboardControl />
+                        <Image Source="{Binding PreviewBitmap}" Stretch="Uniform"
+                               RenderOptions.BitmapInterpolationMode="None" />
+                      </Grid>
+                      <StackPanel Orientation="Horizontal" Spacing="6">
+                        <CheckBox IsChecked="{Binding FlipHorizontal}" Content="Flip H" />
+                        <CheckBox IsChecked="{Binding FlipVertical}" Content="Flip V" />
+                      </StackPanel>
+                      <Grid ColumnDefinitions="Auto,*,Auto,*">
+                        <TextBlock VerticalAlignment="Center" Text="X" />
+                        <NumericUpDown Grid.Column="1" Margin="3,0" Minimum="-4096" Maximum="4096"
+                                       Value="{Binding OffsetX}" FormatString="0" />
+                        <TextBlock Grid.Column="2" VerticalAlignment="Center" Text="Y" />
+                        <NumericUpDown Grid.Column="3" Margin="3,0" Minimum="-4096" Maximum="4096"
+                                       Value="{Binding OffsetY}" FormatString="0" />
+                      </Grid>
+                      <TextBlock Text="{Binding DiagnosticText}" FontSize="10" TextWrapping="Wrap" />
+                      <TextBlock Text="Blocking error" Foreground="#FFFF5A5A" FontSize="10" IsVisible="{Binding HasError}" />
+                      <TextBlock Text="Clipping warning" Foreground="#FFFFB347" FontSize="10" IsVisible="{Binding HasWarning}" />
+                      <Button Tag="{Binding TargetFace}" Click="ResetImportFace_Click" Content="Reset Face" />
+                    </StackPanel>
+                  </Border>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+
+            <Grid ColumnDefinitions="*,*,*" IsVisible="{Binding IsImportDraftLoaded}">
+              <Button Grid.Column="0" Margin="0,0,4,0" Click="ResetAllImport_Click" Content="Reset All" />
+              <Button Grid.Column="1" Margin="4,0" Click="Reimport_Click" Content="Re-import" />
+              <Button Grid.Column="2" Margin="4,0,0,0" IsEnabled="{Binding CanApplyImport}"
+                      Click="ApplyImport_Click" Content="Apply / Reconstruct" />
+            </Grid>
 
             <Separator Margin="0,6" />
-            <TextBlock Text="Import statistics" FontWeight="SemiBold" />
-            <TextBlock Text="{Binding ImportSummary}"
-                       FontFamily="Consolas"
-                       TextWrapping="Wrap" />
+            <TextBlock Text="Import diagnostics" FontWeight="SemiBold" />
+            <TextBlock Text="{Binding ImportSummary}" FontFamily="Consolas" TextWrapping="Wrap" />
           </StackPanel>
         </ScrollViewer>
       </Border>
@@ -88,6 +184,7 @@
               PointerPressed="Viewport_PointerPressed"
               PointerMoved="Viewport_PointerMoved"
               PointerReleased="Viewport_PointerReleased"
+              PointerExited="Viewport_PointerExited"
               PointerWheelChanged="Viewport_PointerWheelChanged">
         <Grid>
           <views:SilkVoxelViewportControl />
@@ -113,8 +210,46 @@
               BorderThickness="1,0,0,0">
         <ScrollViewer>
           <StackPanel Spacing="10">
+            <TextBlock Text="Voxel Editor" FontSize="16" FontWeight="SemiBold" />
+            <UniformGrid Columns="4">
+              <Button Margin="2" Tag="Add" Click="SelectEditTool_Click" Content="Add" />
+              <Button Margin="2" Tag="Erase" Click="SelectEditTool_Click" Content="Erase" />
+              <Button Margin="2" Tag="Paint" Click="SelectEditTool_Click" Content="Paint" />
+              <Button Margin="2" Tag="Select" Click="SelectEditTool_Click" Content="Select" />
+            </UniformGrid>
+            <TextBlock Text="Current color" />
+            <ColorPicker Color="{Binding EditColor}" IsAlphaEnabled="False" />
+            <TextBlock Text="{Binding SelectionSummary}" TextWrapping="Wrap" Opacity="0.72" />
+            <UniformGrid Columns="3">
+              <Button Margin="2" Tag="-X" Click="MoveSelection_Click" Content="−X" />
+              <Button Margin="2" Tag="+X" Click="MoveSelection_Click" Content="+X" />
+              <Button Margin="2" Tag="-Y" Click="MoveSelection_Click" Content="−Y" />
+              <Button Margin="2" Tag="+Y" Click="MoveSelection_Click" Content="+Y" />
+              <Button Margin="2" Tag="-Z" Click="MoveSelection_Click" Content="−Z" />
+              <Button Margin="2" Tag="+Z" Click="MoveSelection_Click" Content="+Z" />
+            </UniformGrid>
+            <Button Click="DeleteSelection_Click" Content="Delete Selection" />
+            <Expander Header="Resize Volume">
+              <StackPanel Spacing="6">
+                <Grid ColumnDefinitions="Auto,*,Auto,*,Auto,*">
+                  <TextBlock VerticalAlignment="Center" Text="W" />
+                  <NumericUpDown Grid.Column="1" Margin="3,0" Minimum="1" Maximum="1048576" Value="{Binding ResizeWidth}" FormatString="0" />
+                  <TextBlock Grid.Column="2" VerticalAlignment="Center" Text="H" />
+                  <NumericUpDown Grid.Column="3" Margin="3,0" Minimum="1" Maximum="1048576" Value="{Binding ResizeHeight}" FormatString="0" />
+                  <TextBlock Grid.Column="4" VerticalAlignment="Center" Text="D" />
+                  <NumericUpDown Grid.Column="5" Margin="3,0" Minimum="1" Maximum="1048576" Value="{Binding ResizeDepth}" FormatString="0" />
+                </Grid>
+                <Button Click="ResizeVolume_Click" Content="Apply Resize" />
+              </StackPanel>
+            </Expander>
+            <TextBlock Text="Left-drag: active tool · Shift+Paint: all faces · Right-drag: orbit"
+                       TextWrapping="Wrap" Opacity="0.72" />
+
+            <Separator Margin="0,6" />
             <TextBlock Text="Camera" FontSize="16" FontWeight="SemiBold" />
             <TextBlock Text="{Binding CameraSummary}" TextWrapping="Wrap" />
+            <CheckBox IsChecked="{Binding CameraFaceSnapEnabled}"
+                      Content="Face-aligned snap (5°)" />
             <UniformGrid Columns="2" Rows="3">
               <Button Margin="2" Tag="Pixel2To1" Click="SelectPreset_Click" Content="Pixel 2:1" />
               <Button Margin="2" Tag="TrueIsometric" Click="SelectPreset_Click" Content="True Iso" />
@@ -186,6 +321,20 @@
             <Separator Margin="0,6" />
             <TextBlock Text="Background" FontSize="16" FontWeight="SemiBold" />
             <ColorPicker Color="{Binding BackgroundColor}" IsAlphaEnabled="False" />
+
+            <Separator Margin="0,6" />
+            <TextBlock Text="Sprite Export" FontSize="16" FontWeight="SemiBold" />
+            <TextBlock Text="{Binding ExportSummary}" TextWrapping="Wrap" Opacity="0.72" />
+            <TextBlock Text="Direction count" />
+            <UniformGrid Columns="3">
+              <Button Margin="2" Tag="4" Click="SelectExportDirectionCount_Click" Content="4" />
+              <Button Margin="2" Tag="8" Click="SelectExportDirectionCount_Click" Content="8" />
+              <Button Margin="2" Tag="16" Click="SelectExportDirectionCount_Click" Content="16" />
+            </UniformGrid>
+            <CheckBox IsChecked="{Binding ExportTrueIsometric}" Content="Use True Isometric camera" />
+            <CheckBox IsChecked="{Binding ExportTransparentBackground}" Content="Transparent background" />
+            <Button IsEnabled="{Binding CanExport}" Click="ExportCurrentView_Click" Content="Export Current View PNG..." />
+            <Button IsEnabled="{Binding CanExport}" Click="ExportDirectionSheet_Click" Content="Export Direction Sheet + JSON..." />
           </StackPanel>
         </ScrollViewer>
       </Border>

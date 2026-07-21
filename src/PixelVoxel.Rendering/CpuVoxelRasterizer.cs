@@ -54,10 +54,12 @@ public sealed class CpuVoxelRasterizer
             Vector3 worldNormal = transform.TransformNormalToWorld(normal);
             RasterizeTriangleFixed(
                 first, second, third, color, surface.Colors, surface.Depth,
-                width, height, worldNormal, surface.Normals, surface.Coverage);
+                width, height, worldNormal, surface.Normals, surface.Coverage,
+                vertices[offset].EditorMask, surface.EditorMask);
             RasterizeTriangleFixed(
                 first, third, fourth, color, surface.Colors, surface.Depth,
-                width, height, worldNormal, surface.Normals, surface.Coverage);
+                width, height, worldNormal, surface.Normals, surface.Coverage,
+                vertices[offset].EditorMask, surface.EditorMask);
         }
 
         return surface;
@@ -150,7 +152,9 @@ public sealed class CpuVoxelRasterizer
         int height,
         Vector3 normal = default,
         Vector3[]? normalBuffer = null,
-        bool[]? coverageBuffer = null)
+        bool[]? coverageBuffer = null,
+        float editorMask = 0f,
+        float[]? editorMaskBuffer = null)
     {
         float area = Edge(first, second, third.X, third.Y);
         if (MathF.Abs(area) < 0.0001f)
@@ -197,6 +201,11 @@ public sealed class CpuVoxelRasterizer
                     {
                         coverageBuffer[pixelIndex] = true;
                     }
+
+                    if (editorMaskBuffer is not null)
+                    {
+                        editorMaskBuffer[pixelIndex] = editorMask;
+                    }
                 }
             }
         }
@@ -213,7 +222,9 @@ public sealed class CpuVoxelRasterizer
         int height,
         Vector3 normal = default,
         Vector3[]? normalBuffer = null,
-        bool[]? coverageBuffer = null)
+        bool[]? coverageBuffer = null,
+        float editorMask = 0f,
+        float[]? editorMaskBuffer = null)
     {
         FixedScreenVertex fixedFirst = ToFixed(first);
         FixedScreenVertex fixedSecond = ToFixed(second);
@@ -276,6 +287,12 @@ public sealed class CpuVoxelRasterizer
                     if (coverageBuffer is not null)
                     {
                         coverageBuffer[pixelIndex] = true;
+                    }
+
+
+                    if (editorMaskBuffer is not null)
+                    {
+                        editorMaskBuffer[pixelIndex] = editorMask;
                     }
                 }
             }

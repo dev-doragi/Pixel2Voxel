@@ -31,6 +31,7 @@ public sealed class VoxelSurfaceMesher
         VoxelMeshVertex[] vertices = new VoxelMeshVertex[checked(faceCount * 4)];
         uint[] indices = new uint[checked(faceCount * 6)];
         Vector3[] normals = new Vector3[faceCount];
+        VoxelSurfaceIdentity[] identities = new VoxelSurfaceIdentity[faceCount];
         int faceIndex = 0;
 
         foreach (VoxelEntry entry in document.Storage.GetOccupiedCells())
@@ -71,12 +72,13 @@ public sealed class VoxelSurfaceMesher
                 indices[indexOffset + 4] = first + 2;
                 indices[indexOffset + 5] = first + 3;
                 normals[faceIndex] = face.Normal;
+                identities[faceIndex] = new VoxelSurfaceIdentity(entry.Coordinate, face.Face);
                 faceIndex++;
             }
         }
 
         return new VoxelMeshBuildResult(
-            new VoxelMeshData(document.Storage.Dimensions, vertices, indices, normals),
+            new VoxelMeshData(document.Storage.Dimensions, vertices, indices, normals, identities),
             faceCount,
             null);
     }

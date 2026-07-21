@@ -1,4 +1,6 @@
 using PixelVoxel.App.Services;
+using PixelVoxel.Core;
+using PixelVoxel.Imaging;
 using PixelVoxel.Rendering;
 
 namespace PixelVoxel.App.Tests;
@@ -10,13 +12,14 @@ public sealed class ViewportSettingsStoreTests : IDisposable
         $"PixelVoxel.App.Tests-{Guid.NewGuid():N}");
 
     [Fact]
-    public void SavesAndReloadsVersionOneSettings()
+    public void SavesAndReloadsVersionTwoSettings()
     {
         string path = GetSettingsPath();
         ViewportUserSettings expected = new()
         {
             DefaultYaw = 15f,
             DefaultPitch = -20f,
+            CameraFaceSnapEnabled = false,
             ZoomIsFit = false,
             ManualZoomScale = 7,
             AnimationSpeed = 45f,
@@ -24,6 +27,28 @@ public sealed class ViewportSettingsStoreTests : IDisposable
             OutlineMode = VoxelOutlineMode.SilhouetteAndDepth,
             OutlineColor = "#112233",
             BackgroundColor = "#445566",
+            ExportDirectionCount = 16,
+            ExportTrueIsometric = true,
+            ExportTransparentBackground = false,
+            RecentImports =
+            [
+                new RecentImportSettings
+                {
+                    SourceKind = SixViewImportSourceKind.HorizontalSheet,
+                    Paths = ["C:\\sprites\\six-view.png"],
+                    Alignments =
+                    [
+                        new RecentFaceAlignmentSettings
+                        {
+                            SourceSlotIndex = 2,
+                            TargetFace = VoxelFace.Front,
+                            FlipHorizontal = true,
+                            OffsetX = 3,
+                            OffsetY = -2,
+                        },
+                    ],
+                },
+            ],
         };
         using (ViewportSettingsStore writer = new(path))
         {
@@ -35,7 +60,7 @@ public sealed class ViewportSettingsStoreTests : IDisposable
         (ViewportUserSettings actual, string? diagnostic) = reader.Load();
 
         Assert.Null(diagnostic);
-        Assert.Equal(expected, actual);
+        Assert.Equivalent(expected, actual, strict: true);
     }
 
     [Fact]
@@ -50,6 +75,24 @@ public sealed class ViewportSettingsStoreTests : IDisposable
 
         Assert.Equal(new ViewportUserSettings(), settings);
         Assert.NotNull(diagnostic);
+    }
+
+    [Fact]
+    public void VersionOneSettingsUpgradeWithVersionTwoDefaults()
+    {
+        string path = GetSettingsPath();
+        Directory.CreateDirectory(_directory);
+        File.WriteAllText(path, "{\"Version\":1,\"DefaultYaw\":25}");
+        using ViewportSettingsStore store = new(path);
+
+        (ViewportUserSettings settings, string? diagnostic) = store.Load();
+
+        Assert.Equal(2, settings.Version);
+        Assert.Equal(25f, settings.DefaultYaw);
+        Assert.Equal(8, settings.ExportDirectionCount);
+        Assert.True(settings.ExportTransparentBackground);
+        Assert.Empty(settings.RecentImports);
+        Assert.Contains("upgraded", diagnostic);
     }
 
     [Fact]
