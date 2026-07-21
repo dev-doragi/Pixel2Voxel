@@ -130,7 +130,8 @@ public sealed class PxvProjectSerializerTests : IDisposable
             new Rgba32Color(0, 0, 0, 255),
             8,
             false,
-            true);
+            true,
+            17f);
         return new PixelVoxelProject(document, views, settings);
     }
 }

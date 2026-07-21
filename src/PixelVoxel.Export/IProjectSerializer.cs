@@ -20,7 +20,8 @@ public sealed record PixelVoxelProjectSettings(
     Rgba32Color OutlineColor,
     int ExportDirectionCount,
     bool ExportTrueIsometric,
-    bool ExportTransparentBackground);
+    bool ExportTransparentBackground,
+    float ModelRoll = 0f);
 
 /// <summary>Contains the persistent source views, editable model, and project settings.</summary>
 public sealed class PixelVoxelProject

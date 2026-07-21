@@ -31,6 +31,8 @@
 - Free View는 연속 yaw와 pitch를 허용한다.
 - 마우스 입력은 카메라의 world-to-view 회전만 변경한다.
 - 수평·수직 Animation은 모델 중심점 기준 object-to-world 회전만 변경한다.
+- Object Tilt는 모델 중심점 기준 로컬 Z축 roll을 변경하며 yaw/pitch와 함께 합성한다.
+- View 모드에서 `Shift+좌클릭 드래그`는 카메라 대신 Object Tilt를 변경한다.
 - 모델 회전과 카메라 회전은 렌더 프레임에서 합성하며 서로의 각도 상태를 덮어쓰지 않는다.
 - Free View 카메라는 축 정렬 면에서 5° 이내일 때 해당 면의 정면 각도로 스냅할 수 있다.
 - 면 정렬은 카메라 시선과 면 노멀이 평행한 상태이며 `|dot|`이 1에 가까운 조건이다.

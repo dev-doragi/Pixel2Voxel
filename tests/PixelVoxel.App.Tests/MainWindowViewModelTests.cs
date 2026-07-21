@@ -27,6 +27,42 @@ public sealed class MainWindowViewModelTests : IDisposable
     }
 
     [Fact]
+    public void ViewModeIsDefaultAndFreeViewCanBeResetToStandardRotation()
+    {
+        using MainWindowViewModel viewModel = CreateViewModel();
+
+        Assert.Equal(VoxelEditTool.View, viewModel.SelectedEditTool);
+        Assert.True(viewModel.IsViewMode);
+
+        viewModel.EnterFreeView();
+        Assert.False(viewModel.CameraFaceSnapEnabled);
+        viewModel.Rotate(20f, 10f);
+        Assert.Equal(VoxelViewMode.FreeView, viewModel.CurrentCameraState.Mode);
+
+        viewModel.HorizontalAnimationEnabled = true;
+        viewModel.AdvanceAnimations(0.1d);
+        viewModel.ResetView();
+
+        Assert.Equal(VoxelCameraState.Pixel2To1(), viewModel.CurrentCameraState);
+        Assert.Equal(VoxelModelRotationState.Identity, viewModel.CurrentModelRotation);
+        Assert.False(viewModel.IsAnimationActive);
+    }
+
+    [Fact]
+    public void ObjectTiltCanBeDraggedAndResetIndependently()
+    {
+        using MainWindowViewModel viewModel = CreateViewModel();
+        VoxelCameraState camera = viewModel.CurrentCameraState;
+
+        viewModel.Tilt(20f);
+
+        Assert.Equal(14f, viewModel.CurrentModelRotation.RollDegrees);
+        Assert.Equal(camera, viewModel.CurrentCameraState);
+        viewModel.ResetTilt();
+        Assert.Equal(VoxelModelRotationState.Identity, viewModel.CurrentModelRotation);
+    }
+
+    [Fact]
     public void ManualZoomIsLimitedToOneThroughSixteen()
     {
         using MainWindowViewModel viewModel = CreateViewModel();

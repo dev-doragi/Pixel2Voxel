@@ -211,7 +211,8 @@
         <ScrollViewer>
           <StackPanel Spacing="10">
             <TextBlock Text="Voxel Editor" FontSize="16" FontWeight="SemiBold" />
-            <UniformGrid Columns="4">
+            <UniformGrid Columns="5">
+              <Button Margin="2" Tag="View" Click="SelectEditTool_Click" Content="View" />
               <Button Margin="2" Tag="Add" Click="SelectEditTool_Click" Content="Add" />
               <Button Margin="2" Tag="Erase" Click="SelectEditTool_Click" Content="Erase" />
               <Button Margin="2" Tag="Paint" Click="SelectEditTool_Click" Content="Paint" />
@@ -258,6 +259,10 @@
               <Button Margin="2" Tag="Top" Click="SelectPreset_Click" Content="Top" />
               <Button Margin="2" Click="LoadSavedDefault_Click" Content="Saved Default" />
             </UniformGrid>
+            <UniformGrid Columns="2">
+              <Button Margin="2" Click="EnterFreeView_Click" Content="Free Rotation" />
+              <Button Margin="2" Click="ResetView_Click" Content="Reset View" />
+            </UniformGrid>
             <Button Click="SaveCurrentAsDefault_Click" Content="Save Current as Default" />
             <Grid ColumnDefinitions="*,Auto">
               <TextBlock VerticalAlignment="Center" Text="Zoom" />
@@ -274,6 +279,14 @@
             <CheckBox IsChecked="{Binding HorizontalAnimationEnabled}" Content="Horizontal 360° loop" />
             <CheckBox IsChecked="{Binding VerticalAnimationEnabled}" Content="Vertical 360° loop" />
             <TextBlock Text="{Binding ObjectRotationSummary}" TextWrapping="Wrap" Opacity="0.72" />
+            <Grid ColumnDefinitions="*,Auto">
+              <TextBlock VerticalAlignment="Center" Text="Object Tilt (Z)" />
+              <Button Grid.Column="1" Click="ResetTilt_Click" Content="Reset" />
+            </Grid>
+            <Slider Minimum="-180" Maximum="180" TickFrequency="1"
+                    Value="{Binding ModelRollDegrees}" />
+            <TextBlock Text="View mode: Shift+left-drag tilts the object"
+                       TextWrapping="Wrap" Opacity="0.72" />
             <Grid ColumnDefinitions="*,Auto">
               <TextBlock Text="Speed" />
               <TextBlock Grid.Column="1" Text="{Binding AnimationSpeed, StringFormat={}{0:0}°/s}" />

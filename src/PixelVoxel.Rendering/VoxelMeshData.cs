@@ -61,22 +61,35 @@ public sealed class VoxelMeshData
     /// <summary>Creates a viewport-only mesh carrying selection and hover masks.</summary>
     public VoxelMeshData WithEditorOverlay(
         VoxelSelectionBox? selection,
-        VoxelPickResult? hover)
+        VoxelPickResult? hover,
+        IReadOnlyCollection<VoxelPickResult>? brushPreview = null,
+        Rgba32Color? brushColor = null)
     {
         VoxelMeshVertex[] vertices = Vertices.ToArray();
         ReadOnlySpan<VoxelSurfaceIdentity> faces = Faces.Span;
         for (int faceIndex = 0; faceIndex < faces.Length; faceIndex++)
         {
             VoxelSurfaceIdentity identity = faces[faceIndex];
-            float mask = hover is not null &&
+            bool isHover = hover is not null &&
                 hover.Coordinate == identity.Coordinate &&
-                hover.Face == identity.Face
+                hover.Face == identity.Face;
+            bool isBrushPreview = brushPreview?.Any(pick =>
+                pick.Coordinate == identity.Coordinate && pick.Face == identity.Face) == true;
+            float mask = isBrushPreview && brushColor.HasValue
+                ? 0f
+                : isHover || isBrushPreview
                 ? 1f
                 : selection?.Contains(identity.Coordinate) == true ? 0.5f : 0f;
             for (int vertexIndex = 0; vertexIndex < 4; vertexIndex++)
             {
                 int index = (faceIndex * 4) + vertexIndex;
-                vertices[index] = vertices[index] with { EditorMask = mask };
+                vertices[index] = vertices[index] with
+                {
+                    Color = isBrushPreview && brushColor.HasValue
+                        ? brushColor.Value
+                        : vertices[index].Color,
+                    EditorMask = mask,
+                };
             }
         }
 

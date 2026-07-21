@@ -134,6 +134,40 @@ public sealed class VoxelRenderStyleTests
         Assert.DoesNotContain(baseMesh.Vertices.ToArray(), vertex => vertex.EditorMask != 0f);
     }
 
+    [Fact]
+    public void BrushStrokePreviewMarksEverySampleWithoutChangingBaseMesh()
+    {
+        VoxelMeshData baseMesh = CreateMesh();
+        VoxelPickResult sample = new(
+            new VoxelCoordinate(0, 0, 0),
+            VoxelFace.Front,
+            new VoxelCoordinate(0, 0, 1),
+            1f);
+
+        VoxelMeshData preview = baseMesh.WithEditorOverlay(null, null, [sample]);
+
+        Assert.Contains(preview.Vertices.ToArray(), vertex => vertex.EditorMask == 1f);
+        Assert.DoesNotContain(baseMesh.Vertices.ToArray(), vertex => vertex.EditorMask != 0f);
+    }
+
+    [Fact]
+    public void PaintBrushPreviewUsesTheSelectedColorInsteadOfYellowMask()
+    {
+        VoxelMeshData baseMesh = CreateMesh();
+        Rgba32Color paint = new(220, 30, 80, 255);
+        VoxelPickResult sample = new(
+            new VoxelCoordinate(0, 0, 0),
+            VoxelFace.Front,
+            new VoxelCoordinate(0, 0, 1),
+            1f);
+
+        VoxelMeshData preview = baseMesh.WithEditorOverlay(null, null, [sample], paint);
+        VoxelMeshVertex[] front = preview.Vertices.ToArray()[..4];
+
+        Assert.All(front, vertex => Assert.Equal(paint, vertex.Color));
+        Assert.All(front, vertex => Assert.Equal(0f, vertex.EditorMask));
+    }
+
     private static PixelFramebuffer Render(VoxelMeshData mesh, VoxelRenderStyle style)
     {
         PixelRenderLayout layout = new PixelRenderLayoutResolver().Resolve(mesh.Dimensions, 8, 8);

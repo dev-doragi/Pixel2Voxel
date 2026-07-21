@@ -28,6 +28,7 @@ public sealed partial class MainWindow : Window
     private readonly Stopwatch _animationClock = Stopwatch.StartNew();
     private Point? _lastPointerPosition;
     private bool _isEditingStroke;
+    private bool _isTiltingView;
     private bool _allowClose;
     private bool _closingPromptOpen;
     private TimeSpan _lastAnimationTime;
@@ -321,6 +322,22 @@ public sealed partial class MainWindow : Window
         }
     }
 
+    private void EnterFreeView_Click(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is MainWindowViewModel viewModel)
+        {
+            viewModel.EnterFreeView();
+        }
+    }
+
+    private void ResetView_Click(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is MainWindowViewModel viewModel)
+        {
+            viewModel.ResetView();
+        }
+    }
+
     private void FitZoom_Click(object? sender, RoutedEventArgs e)
     {
         if (DataContext is MainWindowViewModel viewModel)
@@ -347,6 +364,16 @@ public sealed partial class MainWindow : Window
 
         if (point.Properties.IsLeftButtonPressed)
         {
+            if (viewModel.IsViewMode)
+            {
+                _lastPointerPosition = point.Position;
+                _isTiltingView = e.KeyModifiers.HasFlag(KeyModifiers.Shift);
+                e.Pointer.Capture(ViewportHost);
+                viewModel.ClearEditorHover();
+                e.Handled = true;
+                return;
+            }
+
             (float x, float y, int width, int height) = GetEditorPointer(point.Position, viewModel);
             _isEditingStroke = viewModel.BeginEditStroke(
                 x,
@@ -387,13 +414,22 @@ public sealed partial class MainWindow : Window
         {
             if (!point.Properties.IsLeftButtonPressed && !point.Properties.IsRightButtonPressed)
             {
-                (float x, float y, int width, int height) = GetEditorPointer(point.Position, viewModel);
-                viewModel.UpdateEditorHover(x, y, width, height);
+                if (viewModel.IsViewMode)
+                {
+                    viewModel.ClearEditorHover();
+                }
+                else
+                {
+                    (float x, float y, int width, int height) = GetEditorPointer(point.Position, viewModel);
+                    viewModel.UpdateEditorHover(x, y, width, height);
+                }
             }
 
             return;
         }
-        if (!point.Properties.IsRightButtonPressed)
+        bool isOrbitPressed = point.Properties.IsRightButtonPressed ||
+            (viewModel.IsViewMode && point.Properties.IsLeftButtonPressed);
+        if (!isOrbitPressed)
         {
             ReleasePointer(e.Pointer);
             return;
@@ -401,7 +437,14 @@ public sealed partial class MainWindow : Window
 
         Vector delta = point.Position - _lastPointerPosition.Value;
         _lastPointerPosition = point.Position;
-        viewModel.Rotate((float)delta.X, (float)delta.Y);
+        if (_isTiltingView)
+        {
+            viewModel.Tilt((float)delta.X);
+        }
+        else
+        {
+            viewModel.Rotate((float)delta.X, (float)delta.Y);
+        }
         e.Handled = true;
     }
 
@@ -490,7 +533,16 @@ public sealed partial class MainWindow : Window
         }
 
         _lastPointerPosition = null;
+        _isTiltingView = false;
         pointer.Capture(null);
+    }
+
+    private void ResetTilt_Click(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is MainWindowViewModel viewModel)
+        {
+            viewModel.ResetTilt();
+        }
     }
 
     private async void Window_KeyDown(object? sender, KeyEventArgs e)

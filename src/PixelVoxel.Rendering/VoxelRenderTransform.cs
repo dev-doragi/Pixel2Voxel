@@ -108,7 +108,8 @@ public sealed class VoxelRenderTransformResolver
         }
 
         if (!float.IsFinite(modelRotation.YawDegrees) ||
-            !float.IsFinite(modelRotation.PitchDegrees))
+            !float.IsFinite(modelRotation.PitchDegrees) ||
+            !float.IsFinite(modelRotation.RollDegrees))
         {
             throw new ArgumentOutOfRangeException(nameof(modelRotation));
         }
@@ -171,7 +172,8 @@ public sealed class VoxelRenderTransformResolver
 
     internal static Matrix4x4 ResolveModelRotation(VoxelModelRotationState modelRotation) =>
         Matrix4x4.CreateRotationY(DegreesToRadians(modelRotation.YawDegrees)) *
-        Matrix4x4.CreateRotationX(DegreesToRadians(-modelRotation.PitchDegrees));
+        Matrix4x4.CreateRotationX(DegreesToRadians(-modelRotation.PitchDegrees)) *
+        Matrix4x4.CreateRotationZ(DegreesToRadians(modelRotation.RollDegrees));
 
     private static (float Yaw, float Pitch) ResolveAngles(VoxelCameraState camera) =>
         camera.Preset switch

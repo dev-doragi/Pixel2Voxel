@@ -58,7 +58,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     private string _statusText = "Ready";
     private string _viewportMessage = "Import a 6×1 sheet or assign six PNG files.";
     private string _cameraSummary = "Pixel Preview · Pixel 2:1";
-    private string _objectRotationSummary = "Object · Yaw 0° · Pitch 0°";
+    private string _objectRotationSummary = "Object · Yaw 0° · Pitch 0° · Tilt 0°";
     private string _zoomSummary = "Fit";
     private int _sourcePixelWidth;
     private int _sourcePixelHeight;
@@ -66,6 +66,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     private float _rawPitchDegrees;
     private float _rawModelYawDegrees;
     private float _rawModelPitchDegrees;
+    private float _rawModelRollDegrees;
     private float _savedDefaultYaw;
     private float _savedDefaultPitch;
     private bool _cameraFaceSnapEnabled;
@@ -93,7 +94,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     private IReadOnlyList<RecentImportSettings> _recentImports = [];
     private RecentImportSettings? _selectedRecentImport;
     private bool _suppressImportPreviewRefresh;
-    private VoxelEditTool _selectedEditTool = VoxelEditTool.Add;
+    private VoxelEditTool _selectedEditTool = VoxelEditTool.View;
     private AvaloniaColor _editColor = new(255, 255, 255, 255);
     private readonly List<VoxelPickResult> _editStroke = [];
     private bool _strokePaintAllFaces;
@@ -237,13 +238,30 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     public VoxelEditTool SelectedEditTool
     {
         get => _selectedEditTool;
-        set => SetField(ref _selectedEditTool, value);
+        set
+        {
+            if (!SetField(ref _selectedEditTool, value)) return;
+            _editStroke.Clear();
+            _hoverPick = null;
+            OnPropertyChanged(nameof(IsViewMode));
+            RefreshEditorOverlay();
+        }
     }
+
+    /// <summary>Gets whether left-button viewport input navigates instead of editing.</summary>
+    public bool IsViewMode => SelectedEditTool == VoxelEditTool.View;
 
     public AvaloniaColor EditColor
     {
         get => _editColor;
-        set => SetField(ref _editColor, new AvaloniaColor(255, value.R, value.G, value.B));
+        set
+        {
+            if (!SetField(ref _editColor, new AvaloniaColor(255, value.R, value.G, value.B))) return;
+            if (SelectedEditTool == VoxelEditTool.Paint && (_hoverPick is not null || _editStroke.Count > 0))
+            {
+                RefreshEditorOverlay();
+            }
+        }
     }
 
     public string SelectionSummary
@@ -389,6 +407,19 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     {
         get => _objectRotationSummary;
         private set => SetField(ref _objectRotationSummary, value);
+    }
+
+    /// <summary>Gets or sets object-local Z-axis tilt in degrees.</summary>
+    public float ModelRollDegrees
+    {
+        get => _rawModelRollDegrees;
+        set
+        {
+            float roll = VoxelCameraMotion.WrapAngle(FiniteOrDefault(value, 0f));
+            if (MathF.Abs(_rawModelRollDegrees - roll) < 0.001f) return;
+            _rawModelRollDegrees = roll;
+            ApplyModelRotation();
+        }
     }
 
     public string ZoomSummary
@@ -730,6 +761,44 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         ApplyFreeCamera();
     }
 
+    /// <summary>Enters unrestricted orbit mode at the current camera angle.</summary>
+    public void EnterFreeView()
+    {
+        CameraFaceSnapEnabled = false;
+        _rawYawDegrees = _camera.YawDegrees;
+        _rawPitchDegrees = _camera.PitchDegrees;
+        ApplyFreeCamera();
+        CameraSummary = $"Free View · Yaw {_camera.YawDegrees:0}° · Pitch {_camera.PitchDegrees:0}°";
+        StatusText = "Free rotation enabled";
+    }
+
+    /// <summary>Tilts the object around its local Z axis.</summary>
+    public void Tilt(float deltaX) =>
+        ModelRollDegrees = _rawModelRollDegrees + (deltaX * FreeRotationSensitivity);
+
+    /// <summary>Restores only the object-local tilt.</summary>
+    public void ResetTilt()
+    {
+        ModelRollDegrees = 0f;
+        StatusText = "Object tilt reset";
+    }
+
+    /// <summary>Restores the standard camera and clears transient object rotation.</summary>
+    public void ResetView()
+    {
+        _horizontalAnimationEnabled = false;
+        _verticalAnimationEnabled = false;
+        OnPropertyChanged(nameof(HorizontalAnimationEnabled));
+        OnPropertyChanged(nameof(VerticalAnimationEnabled));
+        OnPropertyChanged(nameof(IsAnimationActive));
+        _rawModelYawDegrees = 0f;
+        _rawModelPitchDegrees = 0f;
+        _rawModelRollDegrees = 0f;
+        ApplyModelRotation();
+        SelectPreset(VoxelCameraPreset.Pixel2To1);
+        StatusText = "View reset to Pixel 2:1";
+    }
+
     /// <summary>Commits a visible face snap as the starting point for the next orbit drag.</summary>
     public void CommitCameraSnap()
     {
@@ -892,6 +961,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         int targetHeight,
         bool paintAllFaces)
     {
+        if (SelectedEditTool == VoxelEditTool.View) return false;
         VoxelPickResult? pick = PickViewport(targetX, targetY, targetWidth, targetHeight);
         if (pick is null) return false;
         if (SelectedEditTool == VoxelEditTool.Select)
@@ -903,6 +973,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         _editStroke.Clear();
         _strokePaintAllFaces = paintAllFaces;
         _editStroke.Add(pick);
+        _hoverPick = pick;
+        RefreshEditorOverlay();
         StatusText = $"{SelectedEditTool}: {pick.Coordinate} {pick.Face}";
         return true;
     }
@@ -912,7 +984,10 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     {
         if (_editStroke.Count == 0) return;
         VoxelPickResult? pick = PickViewport(targetX, targetY, targetWidth, targetHeight);
-        if (pick is not null && !_editStroke.Contains(pick)) _editStroke.Add(pick);
+        if (pick is null || Equals(_hoverPick, pick)) return;
+        _hoverPick = pick;
+        if (!_editStroke.Contains(pick)) _editStroke.Add(pick);
+        RefreshEditorOverlay();
     }
 
     /// <summary>Commits all samples from one pointer drag as one Undo entry.</summary>
@@ -954,6 +1029,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         finally
         {
             _editStroke.Clear();
+            _hoverPick = null;
+            RefreshEditorOverlay();
         }
     }
 
@@ -1116,7 +1193,15 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 
     private void RefreshEditorOverlay(bool render = true)
     {
-        _displayMesh = _mesh?.WithEditorOverlay(_selection, _hoverPick);
+        bool paintsColor = SelectedEditTool == VoxelEditTool.Paint;
+        IReadOnlyCollection<VoxelPickResult> preview = _editStroke.Count > 0
+            ? _editStroke
+            : paintsColor && _hoverPick is not null ? [_hoverPick] : [];
+        _displayMesh = _mesh?.WithEditorOverlay(
+            _selection,
+            paintsColor ? null : _hoverPick,
+            preview,
+            paintsColor ? ToRgba(_editColor) : null);
         OnPropertyChanged(nameof(CurrentMesh));
         if (render) RenderCurrentScene();
     }
@@ -1294,7 +1379,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             ToRgba(_outlineColor),
             _exportDirectionCount,
             _exportTrueIsometric,
-            _exportTransparentBackground);
+            _exportTransparentBackground,
+            _modelRotation.RollDegrees);
 
     private void ApplyProjectSettings(PixelVoxelProjectSettings settings)
     {
@@ -1315,7 +1401,11 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             1f);
         _rawModelYawDegrees = FiniteOrDefault(settings.ModelYaw, 0f);
         _rawModelPitchDegrees = FiniteOrDefault(settings.ModelPitch, 0f);
-        _modelRotation = new VoxelModelRotationState(_rawModelYawDegrees, _rawModelPitchDegrees);
+        _rawModelRollDegrees = FiniteOrDefault(settings.ModelRoll, 0f);
+        _modelRotation = new VoxelModelRotationState(
+            _rawModelYawDegrees,
+            _rawModelPitchDegrees,
+            _rawModelRollDegrees);
         _backgroundColor = new AvaloniaColor(255, settings.BackgroundColor.Red, settings.BackgroundColor.Green, settings.BackgroundColor.Blue);
         _lightingEnabled = settings.LightingEnabled;
         _lightAzimuth = Math.Clamp(FiniteOrDefault(settings.LightAzimuth, -45f), -180f, 180f);
@@ -1330,11 +1420,12 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         _exportTransparentBackground = settings.ExportTransparentBackground;
         _renderStyle = BuildRenderStyle();
         CameraSummary = $"Project · Yaw {yaw:0}° · Pitch {pitch:0}°";
-        ObjectRotationSummary = $"Object · Yaw {_rawModelYawDegrees:0}° · Pitch {_rawModelPitchDegrees:0}°";
+        ObjectRotationSummary =
+            $"Object · Yaw {_rawModelYawDegrees:0}° · Pitch {_rawModelPitchDegrees:0}° · Tilt {_rawModelRollDegrees:0}°";
         UpdateExportSummary();
         foreach (string property in new[]
         {
-            nameof(CurrentCameraState), nameof(CurrentModelRotation), nameof(BackgroundColor),
+            nameof(CurrentCameraState), nameof(CurrentModelRotation), nameof(ModelRollDegrees), nameof(BackgroundColor),
             nameof(LightingEnabled), nameof(LightAzimuth), nameof(LightElevation), nameof(Ambient),
             nameof(Intensity), nameof(OutlineEnabled), nameof(IncludeDepthOutline), nameof(OutlineColor),
             nameof(ExportDirectionCount), nameof(ExportTrueIsometric), nameof(ExportTransparentBackground),
@@ -1634,8 +1725,9 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         OnPropertyChanged(nameof(CanExport));
         _rawModelYawDegrees = 0f;
         _rawModelPitchDegrees = 0f;
+        _rawModelRollDegrees = 0f;
         _modelRotation = VoxelModelRotationState.Identity;
-        ObjectRotationSummary = "Object · Yaw 0° · Pitch 0°";
+        ObjectRotationSummary = "Object · Yaw 0° · Pitch 0° · Tilt 0°";
         OnPropertyChanged(nameof(CurrentModelRotation));
         SixViewSlotInfo sourceSlot = result.Import.Slots[0];
         _sourcePixelWidth = sourceSlot.Width;
@@ -1746,14 +1838,18 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     {
         float yaw = VoxelCameraMotion.Snap(_rawModelYawDegrees);
         float pitch = VoxelCameraMotion.Snap(_rawModelPitchDegrees);
-        if (_modelRotation.YawDegrees == yaw && _modelRotation.PitchDegrees == pitch)
+        float roll = VoxelCameraMotion.Snap(_rawModelRollDegrees);
+        if (_modelRotation.YawDegrees == yaw &&
+            _modelRotation.PitchDegrees == pitch &&
+            _modelRotation.RollDegrees == roll)
         {
             return;
         }
 
-        _modelRotation = new VoxelModelRotationState(yaw, pitch);
-        ObjectRotationSummary = $"Object · Yaw {yaw:0}° · Pitch {pitch:0}°";
+        _modelRotation = new VoxelModelRotationState(yaw, pitch, roll);
+        ObjectRotationSummary = $"Object · Yaw {yaw:0}° · Pitch {pitch:0}° · Tilt {roll:0}°";
         OnPropertyChanged(nameof(CurrentModelRotation));
+        OnPropertyChanged(nameof(ModelRollDegrees));
         RenderCurrentScene();
     }
 
