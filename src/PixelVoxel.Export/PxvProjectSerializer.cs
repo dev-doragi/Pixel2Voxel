@@ -118,7 +118,7 @@ public sealed class PxvProjectSerializer : IProjectSerializer
         ProjectManifest manifest = await ReadManifestAsync(archive, cancellationToken);
         if (manifest.Format != "PixelVoxel" || manifest.Version is not (1 or FormatVersion))
         {
-            throw new InvalidDataException($"Unsupported Pixel Voxel project version {manifest.Version}.");
+            throw new InvalidDataException($"Unsupported Pixel2Voxel project version {manifest.Version}.");
         }
 
         if (manifest.CoordinateSystem != "XYZ-RightUpFront-v1")
@@ -160,7 +160,7 @@ public sealed class PxvProjectSerializer : IProjectSerializer
         string fullPath = Path.GetFullPath(path);
         if (!Path.GetExtension(fullPath).Equals(".pxv", StringComparison.OrdinalIgnoreCase))
         {
-            throw new NotSupportedException("Pixel Voxel projects must use the .pxv extension.");
+            throw new NotSupportedException("Pixel2Voxel projects must use the .pxv extension.");
         }
 
         return fullPath;

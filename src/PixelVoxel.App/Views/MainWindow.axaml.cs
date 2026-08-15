@@ -20,7 +20,7 @@ public sealed partial class MainWindow : Window
     {
         Patterns = ["*.png"],
     };
-    private static readonly FilePickerFileType ProjectFileType = new("Pixel Voxel project")
+    private static readonly FilePickerFileType ProjectFileType = new("Pixel2Voxel project")
     {
         Patterns = ["*.pxv"],
     };
@@ -177,7 +177,7 @@ public sealed partial class MainWindow : Window
 
     private async void ExportCurrentView_Click(object? sender, RoutedEventArgs e)
     {
-        string? path = await PickPngSavePathAsync("Export current logical pixel view", "pixel-voxel-view.png");
+        string? path = await PickPngSavePathAsync("Export current logical pixel view", "p2v-view.png");
         if (path is not null && DataContext is MainWindowViewModel viewModel)
         {
             await viewModel.ExportCurrentViewAsync(path);
@@ -189,7 +189,7 @@ public sealed partial class MainWindow : Window
         if (DataContext is not MainWindowViewModel viewModel) return;
         string? path = await PickPngSavePathAsync(
             "Export horizontal direction sheet and Aseprite JSON",
-            $"pixel-voxel-directions-{viewModel.ExportDirectionCount}.png");
+            $"p2v-directions-{viewModel.ExportDirectionCount}.png");
         if (path is not null)
         {
             await viewModel.ExportDirectionSheetAsync(path);
@@ -351,13 +351,13 @@ public sealed partial class MainWindow : Window
 
     private async void ExportAnimatedGif_Click(object? sender, RoutedEventArgs e)
     {
-        string? path = await PickSavePathAsync("Export animated GIF", "pixel-voxel-rotation.gif", "gif", GifFileType);
+        string? path = await PickSavePathAsync("Export animated GIF", "p2v-rotation.gif", "gif", GifFileType);
         if (path is not null && DataContext is MainWindowViewModel viewModel) await viewModel.ExportAnimatedGifAsync(path);
     }
 
     private async void ExportAnimationSheet_Click(object? sender, RoutedEventArgs e)
     {
-        string? path = await PickPngSavePathAsync("Export rotation sheet and Aseprite JSON", "pixel-voxel-rotation.png");
+        string? path = await PickPngSavePathAsync("Export rotation sheet and Aseprite JSON", "p2v-rotation.png");
         if (path is not null && DataContext is MainWindowViewModel viewModel) await viewModel.ExportAnimationSheetAsync(path);
     }
 
@@ -371,7 +371,7 @@ public sealed partial class MainWindow : Window
         string? directory = folders.FirstOrDefault()?.TryGetLocalPath();
         if (directory is not null && DataContext is MainWindowViewModel viewModel)
         {
-            string baseName = viewModel.ProjectPath is null ? "pixel-voxel-model" : Path.GetFileNameWithoutExtension(viewModel.ProjectPath);
+            string baseName = viewModel.ProjectPath is null ? "p2v-model" : Path.GetFileNameWithoutExtension(viewModel.ProjectPath);
             await viewModel.ExportUnityObjPackageAsync(directory, baseName);
         }
     }
@@ -825,7 +825,7 @@ public sealed partial class MainWindow : Window
     {
         Window dialog = new()
         {
-            Title = "Unsaved Pixel Voxel project",
+            Title = "Unsaved Pixel2Voxel project",
             Width = 430,
             Height = 180,
             CanResize = false,
@@ -898,7 +898,7 @@ public sealed partial class MainWindow : Window
         IReadOnlyList<IStorageFile> files = await StorageProvider.OpenFilePickerAsync(
             new FilePickerOpenOptions
             {
-                Title = "Open Pixel Voxel project",
+                Title = "Open Pixel2Voxel project",
                 AllowMultiple = false,
                 FileTypeFilter = [ProjectFileType],
             });
@@ -910,8 +910,8 @@ public sealed partial class MainWindow : Window
         IStorageFile? file = await StorageProvider.SaveFilePickerAsync(
             new FilePickerSaveOptions
             {
-                Title = "Save Pixel Voxel project",
-                SuggestedFileName = "pixel-voxel-project.pxv",
+                Title = "Save Pixel2Voxel project",
+                SuggestedFileName = "p2v-project.pxv",
                 DefaultExtension = "pxv",
                 FileTypeChoices = [ProjectFileType],
                 ShowOverwritePrompt = true,

@@ -1,2 +1,1 @@
-Console.WriteLine("Pixel Voxel CLI is not implemented.");
-
+Console.WriteLine("Pixel2Voxel CLI is not implemented.");

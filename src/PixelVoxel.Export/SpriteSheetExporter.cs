@@ -147,7 +147,7 @@ public sealed class SpriteSheetExporter : ISpriteExporter
             frames,
             meta = new
             {
-                app = "Pixel Voxel",
+                app = "Pixel2Voxel",
                 version = "1",
                 image = imageName,
                 format = "RGBA8888",

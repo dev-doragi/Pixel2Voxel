@@ -1,6 +1,6 @@
 # File Format
 
-## Pixel Voxel project v2 additions
+## Pixel2Voxel project v2 additions
 
 Version 2 adds an optional project-owned `palette` array to `manifest.json`. It contains at most 32 opaque RGBA colors and does not change `document.bin` voxel semantics. The loader remains backward-compatible with version 1 projects, which open with an empty palette. Unknown future versions remain rejected.
 
@@ -14,7 +14,7 @@ GIF output can apply an Aseprite-style 25% to 1000% nearest-neighbor resize with
 
 Unity packages contain `.obj`, `.mtl`, `_palette.png`, `.pixelvoxel.json`, and `Editor/PixelVoxelAssetPostprocessor.cs`. Only exposed voxel faces are emitted. Palette UVs address texel centers, and the generated Unity postprocessor applies Point filtering, disables mipmaps and compression, and clamps the palette texture.
 
-## Pixel Voxel 프로젝트 v1
+## Pixel2Voxel 프로젝트 v1
 
 프로젝트 확장자는 `.pxv`이며 하나의 ZIP 컨테이너로 저장한다. 저장은 같은 디렉터리의 임시 파일에 모두 기록한 뒤 성공 시 최종 파일로 교체한다.
 
@@ -37,4 +37,4 @@ Unity packages contain `.obj`, `.mtl`, `_palette.png`, `.pixelvoxel.json`, and `
 - 모든 프레임은 trim·padding 없이 같은 캔버스와 바닥 중앙 pivot을 사용한다.
 - PNG와 JSON은 임시 파일 작성이 모두 성공한 뒤 교체한다.
 
-이 출력 계약은 `.aseprite` 프로젝트 파일이나 향후 Pixel Voxel 프로젝트 저장 형식을 정의하지 않는다.
+이 출력 계약은 `.aseprite` 프로젝트 파일이나 향후 Pixel2Voxel 프로젝트 저장 형식을 정의하지 않는다.

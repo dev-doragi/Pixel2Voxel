@@ -277,7 +277,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     public string? ProjectPath => _projectPath;
 
     /// <summary>Gets the window title including the unsaved marker.</summary>
-    public string WindowTitle => $"Pixel Voxel{(_projectPath is null ? string.Empty : $" — {Path.GetFileName(_projectPath)}")}{(IsProjectDirty ? " *" : string.Empty)}";
+    public string WindowTitle => $"Pixel2Voxel{(_projectPath is null ? string.Empty : $" — {Path.GetFileName(_projectPath)}")}{(IsProjectDirty ? " *" : string.Empty)}";
 
     public WorkspaceMode ActiveWorkspace
     {
@@ -1451,7 +1451,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 
         try
         {
-            StatusText = "Saving Pixel Voxel project...";
+            StatusText = "Saving Pixel2Voxel project...";
             PixelVoxelProject project = new(
                 new VoxelDocument(_document.Storage),
                 _sourceViews,
@@ -1486,7 +1486,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     {
         try
         {
-            StatusText = "Loading Pixel Voxel project...";
+            StatusText = "Loading Pixel2Voxel project...";
             PixelVoxelProject project = await _projectSerializer.LoadAsync(path, cancellationToken);
             VoxelMeshBuildResult meshResult = await Task.Run(
                 () => _mesher.Build(project.Document, cancellationToken),

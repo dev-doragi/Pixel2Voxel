@@ -49,6 +49,14 @@ public sealed class MainWindowViewModelTests : IDisposable
     }
 
     [Fact]
+    public void WindowTitleUsesThePixel2VoxelBrand()
+    {
+        using MainWindowViewModel viewModel = CreateViewModel();
+
+        Assert.StartsWith("Pixel2Voxel", viewModel.WindowTitle);
+    }
+
+    [Fact]
     public void ViewModeIsDefaultAndFreeViewCanBeResetToStandardRotation()
     {
         using MainWindowViewModel viewModel = CreateViewModel();

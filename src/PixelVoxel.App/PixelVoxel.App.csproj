@@ -1,6 +1,9 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
+    <AssemblyName>Pixel2Voxel</AssemblyName>
+    <Product>Pixel2Voxel</Product>
+    <Description>Six-view pixel-to-voxel reconstruction studio</Description>
     <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
   </PropertyGroup>
 
