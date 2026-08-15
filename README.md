@@ -12,8 +12,6 @@ Front, Right, Back, Left, Top, Bottom 이미지를 교차 투영하여 3D 점유
 
 모든 버전과 변경 사항은 [GitHub Releases](https://github.com/dev-doragi/IsometricPixel/releases)에서 확인할 수 있습니다.
 
-> 아직 Release가 게시되지 않았다면 위 직접 다운로드 링크는 404를 반환합니다. 아래의 **Release 게시** 절차로 첫 버전을 올리면 활성화됩니다.
-
 ## 핵심 기술
 
 Pixel2Voxel은 AI 이미지 생성기가 아니라 **6방향 정사영 실루엣 기반 Visual Hull 복셀 재구성기**입니다.
