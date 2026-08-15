@@ -5,6 +5,7 @@ using System.Runtime.InteropServices;
 using Matrix4x4 = System.Numerics.Matrix4x4;
 using Vector3 = System.Numerics.Vector3;
 using Avalonia;
+using Avalonia.Controls;
 using Avalonia.Media.Imaging;
 using Avalonia.Platform;
 using PixelVoxel.App.Services;
@@ -38,6 +39,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     private readonly ViewportSettingsStore _settingsStore;
     private readonly SpriteExportCoordinator _spriteExportCoordinator;
     private readonly IProjectSerializer _projectSerializer;
+    private readonly GifAnimationExporter _gifExporter;
+    private readonly IObjExporter _objExporter;
     private readonly VoxelPicker _voxelPicker;
     private readonly VoxelEditHistory _editHistory = new();
     private readonly Dictionary<VoxelFace, string> _separatePaths = [];
@@ -72,9 +75,11 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     private float _savedDefaultYaw;
     private float _savedDefaultPitch;
     private bool _cameraFaceSnapEnabled;
+    private float _cameraFaceSnapAngle;
     private bool _horizontalAnimationEnabled;
     private bool _verticalAnimationEnabled;
     private bool _rollAnimationEnabled;
+    private bool _animationPreviewPlaying;
     private float _animationSpeed;
     private int? _manualZoomScale;
     private bool _lightingEnabled;
@@ -110,6 +115,24 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     private int _resizeDepth = 1;
     private long _meshRevision;
     private long _importRevision;
+    private bool _paletteDirty;
+    private int _animationFramesPerSecond = 12;
+    private int _gifExportResizePercent = 400;
+    private bool _leftPanelVisible = true;
+    private bool _rightPanelVisible = true;
+    private double _leftPanelWidth = 360;
+    private double _rightPanelWidth = 320;
+    private string _inspectorSearchText = string.Empty;
+    private bool _editCategoryExpanded = true;
+    private bool _cameraCategoryExpanded = true;
+    private bool _animationCategoryExpanded = true;
+    private bool _renderingCategoryExpanded = true;
+    private bool _exportCategoryExpanded = true;
+    private WorkspaceMode _activeWorkspace = WorkspaceMode.Import;
+    private ImportWorkflowStep _activeImportStep = ImportWorkflowStep.Source;
+    private ImportFaceSlotViewModel? _selectedImportFaceSlot;
+    private ExportWorkflowMode _selectedExportMode = ExportWorkflowMode.DirectionSheet;
+    private double _responsiveWindowWidth = 1360;
 
     /// <summary>Initializes the application workflow and loads user viewport settings.</summary>
     public MainWindowViewModel(
@@ -122,7 +145,9 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         ViewportSettingsStore settingsStore,
         SpriteExportCoordinator spriteExportCoordinator,
         IProjectSerializer? projectSerializer = null,
-        VoxelPicker? voxelPicker = null)
+        VoxelPicker? voxelPicker = null,
+        GifAnimationExporter? gifExporter = null,
+        IObjExporter? objExporter = null)
     {
         _importer = importer;
         _reconstructor = reconstructor;
@@ -134,6 +159,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         _spriteExportCoordinator = spriteExportCoordinator;
         _projectSerializer = projectSerializer ?? new PxvProjectSerializer(new PngPixelWriter(), new PngPixelReader());
         _voxelPicker = voxelPicker ?? new VoxelPicker();
+        _gifExporter = gifExporter ?? new GifAnimationExporter();
+        _objExporter = objExporter ?? new UnityObjExporter(new PngPixelWriter());
         _editHistory.Changed += OnEditHistoryChanged;
 
         ImportFaceSlots = new ObservableCollection<ImportFaceSlotViewModel>(
@@ -142,6 +169,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         {
             slot.AlignmentChanged += OnImportFaceAlignmentChanged;
         }
+        ProjectPalette = [];
 
         (ViewportUserSettings settings, string? diagnostic) = _settingsStore.Load();
         diagnostic ??= GetInvalidSettingsDiagnostic(settings);
@@ -150,6 +178,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         _rawYawDegrees = _savedDefaultYaw;
         _rawPitchDegrees = _savedDefaultPitch;
         _cameraFaceSnapEnabled = settings.CameraFaceSnapEnabled;
+        _cameraFaceSnapAngle = Math.Clamp(FiniteOrDefault(settings.CameraFaceSnapAngle, 10f), 1f, 30f);
         _camera = new VoxelCameraState(
             VoxelViewMode.PixelPreview,
             VoxelCameraPreset.Free,
@@ -160,6 +189,17 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             1f);
         _manualZoomScale = settings.ZoomIsFit ? null : Math.Clamp(settings.ManualZoomScale, 1, 16);
         _animationSpeed = Math.Clamp(FiniteOrDefault(settings.AnimationSpeed, 30f), 5f, 180f);
+        _animationFramesPerSecond = Math.Clamp(settings.AnimationFramesPerSecond, 1, 60);
+        _gifExportResizePercent = Math.Clamp(settings.GifExportResizePercent, 25, 1000);
+        _leftPanelVisible = settings.LeftPanelVisible;
+        _rightPanelVisible = settings.RightPanelVisible;
+        _leftPanelWidth = Math.Clamp(settings.LeftPanelWidth, 260, 600);
+        _rightPanelWidth = Math.Clamp(settings.RightPanelWidth, 280, 600);
+        _editCategoryExpanded = settings.EditCategoryExpanded;
+        _cameraCategoryExpanded = settings.CameraCategoryExpanded;
+        _animationCategoryExpanded = settings.AnimationCategoryExpanded;
+        _renderingCategoryExpanded = settings.RenderingCategoryExpanded;
+        _exportCategoryExpanded = settings.ExportCategoryExpanded;
         _lightingEnabled = settings.LightingEnabled;
         _lightAzimuth = Math.Clamp(FiniteOrDefault(settings.LightAzimuth, -45f), -180f, 180f);
         _lightElevation = Math.Clamp(FiniteOrDefault(settings.LightElevation, 45f), -90f, 90f);
@@ -200,6 +240,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     /// <summary>Gets the six fixed target-face cards used by the alignment workspace.</summary>
     public ObservableCollection<ImportFaceSlotViewModel> ImportFaceSlots { get; }
 
+    public ObservableCollection<AvaloniaColor> ProjectPalette { get; }
+
     public VoxelMeshData? CurrentMesh => _displayMesh ?? _mesh;
 
     public VoxelRenderTransform? CurrentRenderTransform => _renderTransform;
@@ -223,7 +265,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     public bool HasDocument => _document is not null;
 
     /// <summary>Gets whether the current project differs from its saved checkpoint.</summary>
-    public bool IsProjectDirty => _document is not null && (_projectPath is null || _editHistory.IsDirty);
+    public bool IsProjectDirty => _document is not null && (_projectPath is null || _editHistory.IsDirty || _paletteDirty);
 
     /// <summary>Gets whether the most recent edit can be undone.</summary>
     public bool CanUndo => _editHistory.CanUndo;
@@ -237,6 +279,144 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     /// <summary>Gets the window title including the unsaved marker.</summary>
     public string WindowTitle => $"Pixel Voxel{(_projectPath is null ? string.Empty : $" — {Path.GetFileName(_projectPath)}")}{(IsProjectDirty ? " *" : string.Empty)}";
 
+    public WorkspaceMode ActiveWorkspace
+    {
+        get => _activeWorkspace;
+        set
+        {
+            if (!SetField(ref _activeWorkspace, value)) return;
+            foreach (string property in new[]
+            {
+                nameof(IsImportWorkspace), nameof(IsEditWorkspace),
+                nameof(IsAnimateWorkspace), nameof(IsExportWorkspace),
+                nameof(IsViewportWorkspace), nameof(WorkspaceTitle),
+                nameof(InspectorTabIndex),
+            }) OnPropertyChanged(property);
+        }
+    }
+
+    public bool IsImportWorkspace => ActiveWorkspace == WorkspaceMode.Import;
+    public bool IsEditWorkspace => ActiveWorkspace == WorkspaceMode.Edit;
+    public bool IsAnimateWorkspace => ActiveWorkspace == WorkspaceMode.Animate;
+    public bool IsExportWorkspace => ActiveWorkspace == WorkspaceMode.Export;
+    public bool IsViewportWorkspace => ActiveWorkspace != WorkspaceMode.Import;
+    public string WorkspaceTitle => ActiveWorkspace switch
+    {
+        WorkspaceMode.Import => "Import",
+        WorkspaceMode.Edit => "Voxel Edit",
+        WorkspaceMode.Animate => "Animation",
+        WorkspaceMode.Export => "Export",
+        _ => "Workspace",
+    };
+    public int InspectorTabIndex => ActiveWorkspace switch
+    {
+        WorkspaceMode.Animate => 2,
+        WorkspaceMode.Export => 4,
+        _ => 0,
+    };
+
+    public ImportWorkflowStep ActiveImportStep
+    {
+        get => _activeImportStep;
+        set
+        {
+            if (value != ImportWorkflowStep.Source && !IsImportDraftLoaded) return;
+            if (value == ImportWorkflowStep.Reconstruct && !CanApplyImport) return;
+            if (!SetField(ref _activeImportStep, value)) return;
+            foreach (string property in new[]
+            {
+                nameof(IsImportSourceStep), nameof(IsImportMapStep),
+                nameof(IsImportValidateStep), nameof(IsImportReconstructStep),
+                nameof(CanGoToPreviousImportStep), nameof(CanGoToNextImportStep),
+                nameof(NextImportStepLabel),
+            }) OnPropertyChanged(property);
+        }
+    }
+
+    public bool IsImportSourceStep => ActiveImportStep == ImportWorkflowStep.Source;
+    public bool IsImportMapStep => ActiveImportStep == ImportWorkflowStep.MapAndAlign;
+    public bool IsImportValidateStep => ActiveImportStep == ImportWorkflowStep.Validate;
+    public bool IsImportReconstructStep => ActiveImportStep == ImportWorkflowStep.Reconstruct;
+    public bool CanOpenImportReview => IsImportDraftLoaded;
+    public bool CanGoToPreviousImportStep => ActiveImportStep != ImportWorkflowStep.Source;
+    public bool CanGoToNextImportStep => ActiveImportStep switch
+    {
+        ImportWorkflowStep.Source => IsImportDraftLoaded,
+        ImportWorkflowStep.MapAndAlign => IsImportDraftLoaded,
+        ImportWorkflowStep.Validate => CanApplyImport,
+        _ => false,
+    };
+    public string NextImportStepLabel => ActiveImportStep switch
+    {
+        ImportWorkflowStep.Source => "Review mapping",
+        ImportWorkflowStep.MapAndAlign => "Validate",
+        ImportWorkflowStep.Validate => "Continue to build",
+        _ => "Complete",
+    };
+    public string ImportValidationStatus => !IsImportDraftLoaded
+        ? "Choose a source to continue"
+        : CanApplyImport
+            ? "Ready · all six views passed validation"
+            : "Blocked · resolve the highlighted source issues";
+
+    public ImportFaceSlotViewModel? SelectedImportFaceSlot
+    {
+        get => _selectedImportFaceSlot;
+        set => SetField(ref _selectedImportFaceSlot, value);
+    }
+
+    public void MoveToPreviousImportStep()
+    {
+        if (!CanGoToPreviousImportStep) return;
+        ActiveImportStep = (ImportWorkflowStep)((int)ActiveImportStep - 1);
+    }
+
+    public void MoveToNextImportStep()
+    {
+        if (!CanGoToNextImportStep) return;
+        ActiveImportStep = (ImportWorkflowStep)((int)ActiveImportStep + 1);
+    }
+
+    public ExportWorkflowMode SelectedExportMode
+    {
+        get => _selectedExportMode;
+        set
+        {
+            if (!SetField(ref _selectedExportMode, value)) return;
+            foreach (string property in new[]
+            {
+                nameof(IsCurrentViewExport), nameof(IsDirectionSheetExport),
+                nameof(IsAnimatedGifExport), nameof(IsAnimationSheetExport),
+                nameof(IsUnityObjExport), nameof(PrimaryExportLabel),
+            }) OnPropertyChanged(property);
+        }
+    }
+    public bool IsCurrentViewExport => SelectedExportMode == ExportWorkflowMode.CurrentView;
+    public bool IsDirectionSheetExport => SelectedExportMode == ExportWorkflowMode.DirectionSheet;
+    public bool IsAnimatedGifExport => SelectedExportMode == ExportWorkflowMode.AnimatedGif;
+    public bool IsAnimationSheetExport => SelectedExportMode == ExportWorkflowMode.AnimationSheet;
+    public bool IsUnityObjExport => SelectedExportMode == ExportWorkflowMode.UnityObj;
+    public string PrimaryExportLabel => SelectedExportMode switch
+    {
+        ExportWorkflowMode.CurrentView => "Export current view...",
+        ExportWorkflowMode.DirectionSheet => "Export direction sheet...",
+        ExportWorkflowMode.AnimatedGif => "Export animated GIF...",
+        ExportWorkflowMode.AnimationSheet => "Export animation sheet...",
+        ExportWorkflowMode.UnityObj => "Export Unity OBJ package...",
+        _ => "Export...",
+    };
+
+    public double ResponsiveWindowWidth
+    {
+        get => _responsiveWindowWidth;
+        set
+        {
+            if (!SetField(ref _responsiveWindowWidth, value)) return;
+            OnPropertyChanged(nameof(LeftPanelGridWidth));
+            OnPropertyChanged(nameof(RightPanelGridWidth));
+        }
+    }
+
     public VoxelEditTool SelectedEditTool
     {
         get => _selectedEditTool;
@@ -246,12 +426,40 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             _editStroke.Clear();
             _hoverPick = null;
             OnPropertyChanged(nameof(IsViewMode));
+            foreach (string property in new[]
+            {
+                nameof(IsViewTool), nameof(IsAddTool), nameof(IsEraseTool),
+                nameof(IsPaintTool), nameof(IsEyedropperTool), nameof(IsSelectTool),
+                nameof(ActiveToolTitle), nameof(ActiveToolHint),
+            }) OnPropertyChanged(property);
             RefreshEditorOverlay();
         }
     }
 
     /// <summary>Gets whether left-button viewport input navigates instead of editing.</summary>
     public bool IsViewMode => SelectedEditTool == VoxelEditTool.View;
+
+    public string ActiveToolTitle => SelectedEditTool switch
+    {
+        VoxelEditTool.View => "View",
+        VoxelEditTool.Add => "Add voxel",
+        VoxelEditTool.Erase => "Erase voxel",
+        VoxelEditTool.Paint => "Paint faces",
+        VoxelEditTool.Eyedropper => "Pick source color",
+        VoxelEditTool.Select => "Box select",
+        _ => "Edit",
+    };
+
+    public string ActiveToolHint => SelectedEditTool switch
+    {
+        VoxelEditTool.View => "Right drag orbit  ·  Middle drag pan  ·  Wheel zoom",
+        VoxelEditTool.Add => "Left click or drag on a visible face",
+        VoxelEditTool.Erase => "Left click or drag over voxels",
+        VoxelEditTool.Paint => "Left drag to paint  ·  Shift paints all faces",
+        VoxelEditTool.Eyedropper => "Click a voxel face to sample its source color",
+        VoxelEditTool.Select => "Click two voxels to define a selection",
+        _ => string.Empty,
+    };
 
     public AvaloniaColor EditColor
     {
@@ -264,6 +472,121 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
                 RefreshEditorOverlay();
             }
         }
+    }
+
+    public bool LeftPanelVisible
+    {
+        get => _leftPanelVisible;
+        set
+        {
+            if (!SetField(ref _leftPanelVisible, value)) return;
+            OnPropertyChanged(nameof(IsLeftPanelCollapsed));
+            OnPropertyChanged(nameof(LeftPanelGridWidth));
+            SaveSettings();
+        }
+    }
+    public bool IsLeftPanelCollapsed => !LeftPanelVisible;
+    public bool RightPanelVisible
+    {
+        get => _rightPanelVisible;
+        set
+        {
+            if (!SetField(ref _rightPanelVisible, value)) return;
+            OnPropertyChanged(nameof(RightPanelGridWidth));
+            SaveSettings();
+        }
+    }
+    public double LeftPanelWidth
+    {
+        get => _leftPanelWidth;
+        set
+        {
+            double width = Math.Clamp(value, 260, 600);
+            if (!SetField(ref _leftPanelWidth, width)) return;
+            OnPropertyChanged(nameof(LeftPanelGridWidth));
+            SaveSettings();
+        }
+    }
+    public double RightPanelWidth
+    {
+        get => _rightPanelWidth;
+        set
+        {
+            double width = Math.Clamp(value, 280, 600);
+            if (!SetField(ref _rightPanelWidth, width)) return;
+            OnPropertyChanged(nameof(RightPanelGridWidth));
+            SaveSettings();
+        }
+    }
+    public GridLength LeftPanelGridWidth
+    {
+        get => new(LeftPanelVisible && ResponsiveWindowWidth >= 820 ? LeftPanelWidth : 0, GridUnitType.Pixel);
+        set
+        {
+            if (LeftPanelVisible && value.IsAbsolute && value.Value >= 260)
+                LeftPanelWidth = value.Value;
+        }
+    }
+    public GridLength RightPanelGridWidth
+    {
+        get => new(RightPanelVisible && ResponsiveWindowWidth >= 1180 ? RightPanelWidth : 0, GridUnitType.Pixel);
+        set
+        {
+            if (RightPanelVisible && value.IsAbsolute && value.Value >= 280)
+                RightPanelWidth = value.Value;
+        }
+    }
+    public string InspectorSearchText
+    {
+        get => _inspectorSearchText;
+        set
+        {
+            if (!SetField(ref _inspectorSearchText, value ?? string.Empty)) return;
+            foreach (string property in new[] { nameof(ShowEditCategory), nameof(ShowCameraCategory), nameof(ShowAnimationCategory), nameof(ShowRenderingCategory), nameof(ShowExportCategory) }) OnPropertyChanged(property);
+        }
+    }
+    public bool ShowEditCategory => MatchesInspector("edit palette voxel color selection resize eyedropper");
+    public bool ShowCameraCategory => MatchesInspector("camera view zoom preset orbit");
+    public bool ShowAnimationCategory => MatchesInspector("animation yaw pitch roll speed fps gif");
+    public bool ShowRenderingCategory => MatchesInspector("render lighting outline background color");
+    public bool ShowExportCategory => MatchesInspector("export png sheet json gif obj unity");
+    public bool EditCategoryExpanded { get => _editCategoryExpanded; set { if (SetField(ref _editCategoryExpanded, value)) SaveSettings(); } }
+    public bool CameraCategoryExpanded { get => _cameraCategoryExpanded; set { if (SetField(ref _cameraCategoryExpanded, value)) SaveSettings(); } }
+    public bool AnimationCategoryExpanded { get => _animationCategoryExpanded; set { if (SetField(ref _animationCategoryExpanded, value)) SaveSettings(); } }
+    public bool RenderingCategoryExpanded { get => _renderingCategoryExpanded; set { if (SetField(ref _renderingCategoryExpanded, value)) SaveSettings(); } }
+    public bool ExportCategoryExpanded { get => _exportCategoryExpanded; set { if (SetField(ref _exportCategoryExpanded, value)) SaveSettings(); } }
+    public bool IsViewTool => SelectedEditTool == VoxelEditTool.View;
+    public bool IsAddTool => SelectedEditTool == VoxelEditTool.Add;
+    public bool IsEraseTool => SelectedEditTool == VoxelEditTool.Erase;
+    public bool IsPaintTool => SelectedEditTool == VoxelEditTool.Paint;
+    public bool IsEyedropperTool => SelectedEditTool == VoxelEditTool.Eyedropper;
+    public bool IsSelectTool => SelectedEditTool == VoxelEditTool.Select;
+
+    public void AddCurrentColorToPalette()
+    {
+        if (_document is null) { StatusText = "Create or load a project before editing its palette."; return; }
+        AvaloniaColor color = new(255, EditColor.R, EditColor.G, EditColor.B);
+        if (ProjectPalette.Contains(color)) { StatusText = "That color is already in the project palette."; return; }
+        if (ProjectPalette.Count >= 32) { StatusText = "The project palette is limited to 32 colors."; return; }
+        ProjectPalette.Add(color);
+        MarkPaletteDirty();
+    }
+
+    public void RemovePaletteColor(AvaloniaColor color)
+    {
+        if (ProjectPalette.Remove(color)) MarkPaletteDirty();
+    }
+
+    public void SelectPaletteColor(AvaloniaColor color) => EditColor = color;
+
+    private bool MatchesInspector(string terms) => string.IsNullOrWhiteSpace(_inspectorSearchText) ||
+        terms.Contains(_inspectorSearchText.Trim(), StringComparison.OrdinalIgnoreCase);
+
+    private void MarkPaletteDirty()
+    {
+        _paletteDirty = true;
+        OnPropertyChanged(nameof(IsProjectDirty));
+        OnPropertyChanged(nameof(WindowTitle));
     }
 
     public string SelectionSummary
@@ -293,13 +616,24 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     public bool IsImportDraftLoaded
     {
         get => _isImportDraftLoaded;
-        private set => SetField(ref _isImportDraftLoaded, value);
+        private set
+        {
+            if (!SetField(ref _isImportDraftLoaded, value)) return;
+            OnPropertyChanged(nameof(CanOpenImportReview));
+            OnPropertyChanged(nameof(CanGoToNextImportStep));
+            OnPropertyChanged(nameof(ImportValidationStatus));
+        }
     }
 
     public bool CanApplyImport
     {
         get => _canApplyImport;
-        private set => SetField(ref _canApplyImport, value);
+        private set
+        {
+            if (!SetField(ref _canApplyImport, value)) return;
+            OnPropertyChanged(nameof(CanGoToNextImportStep));
+            OnPropertyChanged(nameof(ImportValidationStatus));
+        }
     }
 
     public bool CanExport => _mesh is not null && _renderLayout is not null;
@@ -436,7 +770,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         set
         {
             if (!SetField(ref _horizontalAnimationEnabled, value)) return;
-            OnPropertyChanged(nameof(IsAnimationActive));
+            AnimationAxisSelectionChanged();
         }
     }
 
@@ -446,7 +780,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         set
         {
             if (!SetField(ref _verticalAnimationEnabled, value)) return;
-            OnPropertyChanged(nameof(IsAnimationActive));
+            AnimationAxisSelectionChanged();
         }
     }
 
@@ -456,12 +790,29 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         set
         {
             if (!SetField(ref _rollAnimationEnabled, value)) return;
-            OnPropertyChanged(nameof(IsAnimationActive));
+            AnimationAxisSelectionChanged();
         }
     }
 
-    public bool IsAnimationActive =>
+    public bool HasAnimationAxis =>
         YawAnimationEnabled || PitchAnimationEnabled || RollAnimationEnabled;
+
+    public bool IsAnimationActive => _animationPreviewPlaying && HasAnimationAxis;
+    public bool AnimationPreviewPlaying => _animationPreviewPlaying;
+    public string AnimationPlayPauseLabel => _animationPreviewPlaying ? "Pause preview" : "Play preview";
+
+    public void ToggleAnimationPreview()
+    {
+        if (!HasAnimationAxis)
+        {
+            StatusText = "Select at least one rotation axis";
+            return;
+        }
+
+        _animationPreviewPlaying = !_animationPreviewPlaying;
+        NotifyAnimationPlaybackChanged();
+        StatusText = _animationPreviewPlaying ? "Rotation preview playing" : "Rotation preview paused";
+    }
 
     public bool CameraFaceSnapEnabled
     {
@@ -478,6 +829,18 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         }
     }
 
+    public float CameraFaceSnapAngle
+    {
+        get => _cameraFaceSnapAngle;
+        set
+        {
+            float clamped = Math.Clamp(FiniteOrDefault(value, 10f), 1f, 30f);
+            if (!SetField(ref _cameraFaceSnapAngle, clamped)) return;
+            if (_camera.Mode == VoxelViewMode.FreeView) ApplyFreeCamera();
+            SaveSettings();
+        }
+    }
+
     public float AnimationSpeed
     {
         get => _animationSpeed;
@@ -488,6 +851,21 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             SaveSettings();
         }
     }
+
+    public int AnimationFramesPerSecond
+    {
+        get => _animationFramesPerSecond;
+        set { if (SetField(ref _animationFramesPerSecond, Math.Clamp(value, 1, 60))) SaveSettings(); }
+    }
+
+    public int GifExportResizePercent
+    {
+        get => _gifExportResizePercent;
+        set { if (SetField(ref _gifExportResizePercent, Math.Clamp(value, 25, 1000))) SaveSettings(); }
+    }
+
+    public string AnimationExportCameraSummary =>
+        "Current editor angle · centered · pan/zoom ignored";
 
     public bool LightingEnabled
     {
@@ -724,6 +1102,65 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             cancellationToken);
     }
 
+    public async Task ExportAnimationSheetAsync(string path, CancellationToken cancellationToken = default)
+    {
+        if (_mesh is null || _renderLayout is null) { StatusText = "Load and reconstruct a model before exporting."; return; }
+        try
+        {
+            VoxelCameraState camera = _camera;
+            VoxelModelRotationState baseRotation = _modelRotation;
+            StatusText = "Rendering rotation animation sheet...";
+            SpriteExportResult result = await _spriteExportCoordinator.ExportRotationSheetAsync(path,
+                _animationFramesPerSecond, _animationSpeed, YawAnimationEnabled, PitchAnimationEnabled,
+                RollAnimationEnabled, camera, baseRotation, _mesh, _renderLayout, _renderStyle,
+                _exportTransparentBackground, cancellationToken);
+            StatusText = $"Exported {result.FrameCount} animation frames: {Path.GetFileName(result.PngPath)} + JSON";
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            StatusText = $"Animation sheet export failed: {exception.Message}";
+        }
+    }
+
+    public async Task ExportAnimatedGifAsync(string path, CancellationToken cancellationToken = default)
+    {
+        if (_mesh is null || _renderLayout is null) { StatusText = "Load and reconstruct a model before exporting."; return; }
+        try
+        {
+            VoxelCameraState camera = _camera;
+            VoxelModelRotationState baseRotation = _modelRotation;
+            StatusText = "Rendering animated GIF...";
+            SpriteFrame[] frames = await _spriteExportCoordinator.RenderRotationFramesAsync(
+                _animationFramesPerSecond, _animationSpeed, YawAnimationEnabled, PitchAnimationEnabled,
+                RollAnimationEnabled, camera, baseRotation, _mesh, _renderLayout, _renderStyle,
+                _exportTransparentBackground, cancellationToken);
+            GifExportResult result = await _gifExporter.ExportAsync(
+                path, frames, cancellationToken, _gifExportResizePercent);
+            StatusText = result.WasQuantized
+                ? $"Exported {result.FrameCount} GIF frames (colors quantized to GIF palette)."
+                : $"Exported {result.FrameCount} GIF frames: {Path.GetFileName(result.GifPath)}";
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            StatusText = $"GIF export failed: {exception.Message}";
+        }
+    }
+
+    public async Task ExportUnityObjPackageAsync(string directory, string baseName, CancellationToken cancellationToken = default)
+    {
+        if (_mesh is null) { StatusText = "Load and reconstruct a model before exporting."; return; }
+        try
+        {
+            StatusText = "Writing Unity OBJ package...";
+            ObjExportResult result = await _objExporter.ExportAsync(new ObjExportRequest(directory, baseName, _mesh), cancellationToken);
+            StatusText = $"Exported {result.FaceCount:N0} faces and {result.PaletteColorCount} palette colors: {Path.GetFileName(result.ObjPath)}";
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            StatusText = $"Unity OBJ export failed: {exception.Message}";
+        }
+    }
+
     public void SelectPreset(VoxelCameraPreset preset)
     {
         (float yaw, float pitch) = preset switch
@@ -793,6 +1230,27 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         SyncModelRotationDisplay();
     }
 
+    /// <summary>Applies one deterministic gizmo drag from its captured starting orientation.</summary>
+    public void SetObjectRotationFromDrag(
+        VoxelModelRotationState start,
+        RotationGizmoAxis axis,
+        float totalDegrees)
+    {
+        ArgumentNullException.ThrowIfNull(start);
+        if (axis == RotationGizmoAxis.None || !float.IsFinite(totalDegrees)) return;
+        _modelRotation = axis switch
+        {
+            RotationGizmoAxis.LocalX => new VoxelModelRotationState(
+                start.YawDegrees, start.PitchDegrees + totalDegrees, start.RollDegrees),
+            RotationGizmoAxis.LocalY => new VoxelModelRotationState(
+                start.YawDegrees + totalDegrees, start.PitchDegrees, start.RollDegrees),
+            RotationGizmoAxis.LocalZ or RotationGizmoAxis.View => new VoxelModelRotationState(
+                start.YawDegrees, start.PitchDegrees, start.RollDegrees + totalDegrees),
+            _ => start,
+        };
+        SyncModelRotationDisplay();
+    }
+
     /// <summary>Restores an object orientation captured before an interactive drag.</summary>
     public void RestoreObjectRotation(VoxelModelRotationState state)
     {
@@ -804,7 +1262,6 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     /// <summary>Enters unrestricted orbit mode at the current camera angle.</summary>
     public void EnterFreeView()
     {
-        CameraFaceSnapEnabled = false;
         _rawYawDegrees = _camera.YawDegrees;
         _rawPitchDegrees = _camera.PitchDegrees;
         ApplyFreeCamera();
@@ -812,41 +1269,56 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         StatusText = "Free rotation enabled";
     }
 
-    /// <summary>Restores the complete object-local orientation.</summary>
+    /// <summary>Stops rotation animation and restores the complete object-local orientation.</summary>
     public void ResetObject()
     {
+        StopRotationAnimations();
         _modelRotation = VoxelModelRotationState.Identity;
         SyncModelRotationDisplay();
-        StatusText = "Object rotation reset";
+        StatusText = "Object rotation reset; animation stopped";
     }
 
-    /// <summary>Restores only the camera while preserving object rotation.</summary>
+    /// <summary>Restores the initial camera, fit zoom, and all interactive/animated model rotation.</summary>
     public void ResetCamera()
     {
-        SelectPreset(VoxelCameraPreset.Pixel2To1);
-        StatusText = "Camera reset to Pixel 2:1";
+        StopRotationAnimations();
+        _modelRotation = VoxelModelRotationState.Identity;
+        _rawModelYawDegrees = 0f;
+        _rawModelPitchDegrees = 0f;
+        _rawModelRollDegrees = 0f;
+        ObjectRotationSummary = "Object · Yaw 0° · Pitch 0° · Roll 0°";
+        OnPropertyChanged(nameof(CurrentModelRotation));
+        OnPropertyChanged(nameof(ModelRollDegrees));
+
+        _rawYawDegrees = -45f;
+        _rawPitchDegrees = -30f;
+        _camera = VoxelCameraState.Pixel2To1();
+        CameraSummary = "Pixel Preview · Pixel 2:1";
+        _manualZoomScale = null;
+        ZoomSummary = "Fit";
+        OnPropertyChanged(nameof(CurrentCameraState));
+        OnPropertyChanged(nameof(ManualZoomScale));
+        SaveSettings();
+        RenderCurrentScene();
+        StatusText = "Camera, pan, zoom, rotation, and animation reset";
     }
 
-    /// <summary>Restores the standard camera and clears transient object rotation.</summary>
+    /// <summary>Restores the complete initial viewport state.</summary>
     public void ResetView()
     {
-        _horizontalAnimationEnabled = false;
-        _verticalAnimationEnabled = false;
-        _rollAnimationEnabled = false;
-        OnPropertyChanged(nameof(YawAnimationEnabled));
-        OnPropertyChanged(nameof(PitchAnimationEnabled));
-        OnPropertyChanged(nameof(RollAnimationEnabled));
-        OnPropertyChanged(nameof(IsAnimationActive));
-        ResetObject();
         ResetCamera();
-        StatusText = "View reset to Pixel 2:1";
+        StatusText = "View reset to initial Pixel 2:1 state";
     }
 
     /// <summary>Commits a visible face snap as the starting point for the next orbit drag.</summary>
     public void CommitCameraSnap()
     {
         if (!CameraFaceSnapEnabled || _camera.Mode != VoxelViewMode.FreeView) return;
-        VoxelCameraFaceSnap snap = VoxelCameraMotion.SnapToFace(_rawYawDegrees, _rawPitchDegrees);
+        VoxelCameraFaceSnap snap = VoxelCameraMotion.SnapToSheetFace(
+            _rawYawDegrees,
+            _rawPitchDegrees,
+            _modelRotation.Orientation,
+            CameraFaceSnapAngle);
         if (!snap.IsSnapped) return;
         _rawYawDegrees = snap.YawDegrees;
         _rawPitchDegrees = snap.PitchDegrees;
@@ -876,6 +1348,39 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         }
 
         SyncModelRotationDisplay();
+    }
+
+    private void StopRotationAnimations()
+    {
+        bool changed = _horizontalAnimationEnabled || _verticalAnimationEnabled || _rollAnimationEnabled ||
+                       _animationPreviewPlaying;
+        _horizontalAnimationEnabled = false;
+        _verticalAnimationEnabled = false;
+        _rollAnimationEnabled = false;
+        _animationPreviewPlaying = false;
+        if (!changed) return;
+        OnPropertyChanged(nameof(YawAnimationEnabled));
+        OnPropertyChanged(nameof(PitchAnimationEnabled));
+        OnPropertyChanged(nameof(RollAnimationEnabled));
+        OnPropertyChanged(nameof(HasAnimationAxis));
+        NotifyAnimationPlaybackChanged();
+    }
+
+    private void AnimationAxisSelectionChanged()
+    {
+        OnPropertyChanged(nameof(HasAnimationAxis));
+        if (!HasAnimationAxis && _animationPreviewPlaying)
+        {
+            _animationPreviewPlaying = false;
+        }
+        NotifyAnimationPlaybackChanged();
+    }
+
+    private void NotifyAnimationPlaybackChanged()
+    {
+        OnPropertyChanged(nameof(IsAnimationActive));
+        OnPropertyChanged(nameof(AnimationPreviewPlaying));
+        OnPropertyChanged(nameof(AnimationPlayPauseLabel));
     }
 
     public void ZoomBy(int direction, int currentFitScale)
@@ -923,6 +1428,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             () => _mesher.Build(document, cancellationToken),
             cancellationToken);
         ApplyLoadedDocument(document, null, meshResult, null, "New project");
+        ReplaceProjectPalette([]);
     }
 
     /// <summary>Saves the current editable project to a portable .pxv archive.</summary>
@@ -949,10 +1455,13 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             PixelVoxelProject project = new(
                 new VoxelDocument(_document.Storage),
                 _sourceViews,
-                CaptureProjectSettings());
+                CaptureProjectSettings(),
+                ProjectPalette.Select(ToRgba));
             await _projectSerializer.SaveAsync(destination, project, cancellationToken);
             _projectPath = Path.GetFullPath(destination);
             _editHistory.MarkClean();
+            _paletteDirty = false;
+            OnPropertyChanged(nameof(IsProjectDirty));
             OnPropertyChanged(nameof(ProjectPath));
             OnPropertyChanged(nameof(WindowTitle));
             StatusText = $"Saved {Path.GetFileName(_projectPath)}";
@@ -983,6 +1492,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
                 () => _mesher.Build(project.Document, cancellationToken),
                 cancellationToken);
             ApplyProjectSettings(project.Settings);
+            ReplaceProjectPalette(project.Palette);
             ApplyLoadedDocument(
                 project.Document,
                 project.SourceViews,
@@ -990,6 +1500,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
                 Path.GetFullPath(path),
                 $"Project: {Path.GetFileName(path)}");
             _editHistory.MarkClean();
+            _paletteDirty = false;
             return true;
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -1015,6 +1526,16 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         if (SelectedEditTool == VoxelEditTool.View) return false;
         VoxelPickResult? pick = PickViewport(targetX, targetY, targetWidth, targetHeight);
         if (pick is null) return false;
+        if (SelectedEditTool == VoxelEditTool.Eyedropper)
+        {
+            if (_document?.Storage.TryGetCell(pick.Coordinate, out VoxelCell? cell) == true &&
+                cell!.TryGetColor(pick.Face, out Rgba32Color sampled))
+            {
+                EditColor = new AvaloniaColor(255, sampled.Red, sampled.Green, sampled.Blue);
+                StatusText = $"Sampled {sampled.Red:X2}{sampled.Green:X2}{sampled.Blue:X2} from {pick.Coordinate} {pick.Face}";
+            }
+            return false;
+        }
         if (SelectedEditTool == VoxelEditTool.Select)
         {
             SelectPickedVoxel(pick.Coordinate);
@@ -1334,9 +1855,10 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 
             _mesh = result.Mesh;
             RefreshEditorOverlay(render: false);
-            OnPropertyChanged(nameof(CanExport));
             if (!result.IsSuccess)
             {
+                _renderLayout = null;
+                OnPropertyChanged(nameof(CanExport));
                 _renderTransform = null;
                 ViewportBitmap = null;
                 ViewportMessage = result.Diagnostic ?? "The render cache could not be created.";
@@ -1349,6 +1871,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
                 dimensions,
                 Math.Max(1, _sourcePixelWidth),
                 Math.Max(1, _sourcePixelHeight));
+            OnPropertyChanged(nameof(CanExport));
             ViewportMessage = string.Empty;
             RenderCurrentScene();
         }
@@ -1396,6 +1919,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         OnPropertyChanged(nameof(CanExport));
         OnPropertyChanged(nameof(ProjectPath));
         OnPropertyChanged(nameof(WindowTitle));
+        ActiveWorkspace = WorkspaceMode.Edit;
 
         if (!meshResult.IsSuccess)
         {
@@ -1410,6 +1934,17 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         ViewportMessage = string.Empty;
         StatusText = projectPath is null ? "New editable project" : $"Loaded {Path.GetFileName(projectPath)}";
         RenderCurrentScene();
+    }
+
+    private void ReplaceProjectPalette(IEnumerable<Rgba32Color> colors)
+    {
+        ProjectPalette.Clear();
+        foreach (Rgba32Color color in colors.Take(32))
+            ProjectPalette.Add(new AvaloniaColor(255, color.Red, color.Green, color.Blue));
+        _paletteDirty = false;
+        OnPropertyChanged(nameof(ProjectPalette));
+        OnPropertyChanged(nameof(IsProjectDirty));
+        OnPropertyChanged(nameof(WindowTitle));
     }
 
     private PixelVoxelProjectSettings CaptureProjectSettings() =>
@@ -1602,6 +2137,9 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         }
 
         IsImportDraftLoaded = true;
+        SelectedImportFaceSlot = ImportFaceSlots.FirstOrDefault();
+        ActiveWorkspace = WorkspaceMode.Import;
+        ActiveImportStep = ImportWorkflowStep.MapAndAlign;
         RefreshAlignmentPreview();
         StatusText = CanApplyImport
             ? "PNG inspection complete. Review alignment and choose Apply / Reconstruct."
@@ -1763,6 +2301,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     {
         _meshCancellation?.Cancel();
         _document = result.Document;
+        ReplaceProjectPalette([]);
         _sourceViews = result.Import.Views;
         _mesh = result.MeshResult.Mesh;
         _projectPath = null;
@@ -1773,7 +2312,6 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         OnPropertyChanged(nameof(HasDocument));
         OnPropertyChanged(nameof(ProjectPath));
         OnPropertyChanged(nameof(WindowTitle));
-        OnPropertyChanged(nameof(CanExport));
         _rawModelYawDegrees = 0f;
         _rawModelPitchDegrees = 0f;
         _rawModelRollDegrees = 0f;
@@ -1788,6 +2326,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         ResizeHeight = dimensions.Height;
         ResizeDepth = dimensions.Depth;
         _renderLayout = _layoutResolver.Resolve(dimensions, _sourcePixelWidth, _sourcePixelHeight);
+        OnPropertyChanged(nameof(CanExport));
+        ActiveWorkspace = WorkspaceMode.Edit;
         AddCurrentImportToRecent();
         string slotLines = string.Join(
             Environment.NewLine,
@@ -1854,6 +2394,19 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     {
         float yaw = VoxelCameraMotion.Snap(_rawYawDegrees);
         float pitch = VoxelCameraMotion.Snap(_rawPitchDegrees);
+        if (CameraFaceSnapEnabled)
+        {
+            VoxelCameraFaceSnap faceSnap = VoxelCameraMotion.SnapToSheetFace(
+                _rawYawDegrees,
+                _rawPitchDegrees,
+                _modelRotation.Orientation,
+                CameraFaceSnapAngle);
+            if (faceSnap.IsSnapped)
+            {
+                yaw = faceSnap.YawDegrees;
+                pitch = faceSnap.PitchDegrees;
+            }
+        }
 
         if (_camera.Mode == VoxelViewMode.FreeView &&
             _camera.YawDegrees == yaw &&
@@ -1981,12 +2534,24 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     private void SaveSettings() =>
         _settingsStore.SaveDebounced(new ViewportUserSettings
         {
+            LeftPanelVisible = _leftPanelVisible,
+            RightPanelVisible = _rightPanelVisible,
+            LeftPanelWidth = _leftPanelWidth,
+            RightPanelWidth = _rightPanelWidth,
+            EditCategoryExpanded = _editCategoryExpanded,
+            CameraCategoryExpanded = _cameraCategoryExpanded,
+            AnimationCategoryExpanded = _animationCategoryExpanded,
+            RenderingCategoryExpanded = _renderingCategoryExpanded,
+            ExportCategoryExpanded = _exportCategoryExpanded,
             DefaultYaw = _savedDefaultYaw,
             DefaultPitch = _savedDefaultPitch,
             CameraFaceSnapEnabled = _cameraFaceSnapEnabled,
+            CameraFaceSnapAngle = _cameraFaceSnapAngle,
             ZoomIsFit = !_manualZoomScale.HasValue,
             ManualZoomScale = _manualZoomScale ?? 6,
             AnimationSpeed = _animationSpeed,
+            AnimationFramesPerSecond = _animationFramesPerSecond,
+            GifExportResizePercent = _gifExportResizePercent,
             LightingEnabled = _lightingEnabled,
             LightAzimuth = _lightAzimuth,
             LightElevation = _lightElevation,
@@ -2045,8 +2610,13 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         bool invalid =
             !float.IsFinite(settings.DefaultYaw) ||
             !float.IsFinite(settings.DefaultPitch) ||
+            !float.IsFinite(settings.CameraFaceSnapAngle) || settings.CameraFaceSnapAngle is < 1f or > 30f ||
             settings.ManualZoomScale is < 1 or > 16 ||
             !float.IsFinite(settings.AnimationSpeed) || settings.AnimationSpeed is < 5f or > 180f ||
+            settings.AnimationFramesPerSecond is < 1 or > 60 ||
+            settings.GifExportResizePercent is < 25 or > 1000 ||
+            !double.IsFinite(settings.LeftPanelWidth) || settings.LeftPanelWidth is < 260 or > 600 ||
+            !double.IsFinite(settings.RightPanelWidth) || settings.RightPanelWidth is < 280 or > 600 ||
             !float.IsFinite(settings.LightAzimuth) || settings.LightAzimuth is < -180f or > 180f ||
             !float.IsFinite(settings.LightElevation) || settings.LightElevation is < -90f or > 90f ||
             !float.IsFinite(settings.Ambient) || settings.Ambient is < 0f or > 1f ||

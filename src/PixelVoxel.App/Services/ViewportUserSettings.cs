@@ -9,7 +9,17 @@ namespace PixelVoxel.App.Services;
 /// <summary>Stores user-owned viewport preferences independently from project files.</summary>
 public sealed record ViewportUserSettings
 {
-    public int Version { get; init; } = 2;
+    public int Version { get; init; } = 4;
+
+    public bool LeftPanelVisible { get; init; } = true;
+    public bool RightPanelVisible { get; init; } = true;
+    public double LeftPanelWidth { get; init; } = 360;
+    public double RightPanelWidth { get; init; } = 320;
+    public bool EditCategoryExpanded { get; init; } = true;
+    public bool CameraCategoryExpanded { get; init; } = true;
+    public bool AnimationCategoryExpanded { get; init; } = true;
+    public bool RenderingCategoryExpanded { get; init; } = true;
+    public bool ExportCategoryExpanded { get; init; } = true;
 
     public float DefaultYaw { get; init; } = -45f;
 
@@ -17,11 +27,18 @@ public sealed record ViewportUserSettings
 
     public bool CameraFaceSnapEnabled { get; init; } = true;
 
+    public float CameraFaceSnapAngle { get; init; } = 10f;
+
     public bool ZoomIsFit { get; init; } = true;
 
     public int ManualZoomScale { get; init; } = 6;
 
     public float AnimationSpeed { get; init; } = 30f;
+    public int AnimationFramesPerSecond { get; init; } = 12;
+    public int GifExportResizePercent { get; init; } = 400;
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public int GifExportScale { get; init; }
 
     public bool LightingEnabled { get; init; } = true;
 
@@ -115,13 +132,20 @@ public sealed class ViewportSettingsStore : IDisposable
             ViewportUserSettings? settings = JsonSerializer.Deserialize<ViewportUserSettings>(
                 File.ReadAllText(_path),
                 JsonOptions);
-            if (settings is null || settings.Version is not (1 or 2))
+            if (settings is null || settings.Version is not (1 or 2 or 3 or 4))
             {
                 return (new ViewportUserSettings(), "Viewport settings were reset because their version is unsupported.");
             }
 
-            return settings.Version == 1
-                ? (settings with { Version = 2 }, "Viewport settings were upgraded to version 2.")
+            return settings.Version < 4
+                ? (settings with
+                {
+                    Version = 4,
+                    GifExportResizePercent = settings.GifExportScale is >= 1 and <= 8
+                        ? settings.GifExportScale * 100
+                        : 400,
+                    GifExportScale = 0,
+                }, "Viewport settings were upgraded to version 4.")
                 : (settings, null);
         }
         catch (Exception exception) when (

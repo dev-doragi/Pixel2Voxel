@@ -123,6 +123,67 @@ public sealed class SpriteExportCoordinator
             cancellationToken);
     }
 
+    /// <summary>Renders one simultaneous 360-degree loop for the selected model axes.</summary>
+    public Task<SpriteFrame[]> RenderRotationFramesAsync(
+        int framesPerSecond,
+        float degreesPerSecond,
+        bool animateYaw,
+        bool animatePitch,
+        bool animateRoll,
+        VoxelCameraState camera,
+        VoxelModelRotationState baseRotation,
+        VoxelMeshData mesh,
+        PixelRenderLayout layout,
+        VoxelRenderStyle style,
+        bool transparentBackground,
+        CancellationToken cancellationToken = default)
+    {
+        if (framesPerSecond is < 1 or > 60) throw new ArgumentOutOfRangeException(nameof(framesPerSecond));
+        if (!float.IsFinite(degreesPerSecond) || degreesPerSecond is < 5f or > 180f) throw new ArgumentOutOfRangeException(nameof(degreesPerSecond));
+        if (!animateYaw && !animatePitch && !animateRoll) throw new InvalidOperationException("Enable at least one rotation axis.");
+        ArgumentNullException.ThrowIfNull(camera);
+        ArgumentNullException.ThrowIfNull(baseRotation);
+        VoxelCameraState exportCamera = camera with { PanX = 0f, PanY = 0f, Zoom = 1f };
+        VoxelRenderStyle outputStyle = ResolveOutputStyle(style, transparentBackground);
+        int frameCount = checked((int)Math.Ceiling((360d / degreesPerSecond) * framesPerSecond));
+        int duration = Math.Max(1, (int)Math.Round(1000d / framesPerSecond));
+        return Task.Run(() =>
+        {
+            SpriteFrame[] frames = new SpriteFrame[frameCount];
+            (int X, int Y)? pivot = null;
+            for (int index = 0; index < frameCount; index++)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                float angle = 360f * index / frameCount;
+                VoxelModelRotationState rotation = index == 0
+                    ? baseRotation
+                    : new VoxelModelRotationState(
+                        animateYaw ? baseRotation.YawDegrees + angle : baseRotation.YawDegrees,
+                        animatePitch ? baseRotation.PitchDegrees + angle : baseRotation.PitchDegrees,
+                        animateRoll ? baseRotation.RollDegrees + angle : baseRotation.RollDegrees);
+                SpriteFrame rendered = RenderFrame($"rotation_{index:D4}", index, rotation.YawDegrees, mesh, exportCamera, rotation, layout, outputStyle, cancellationToken);
+                pivot ??= (rendered.PivotX, rendered.PivotY);
+                frames[index] = new SpriteFrame(rendered.Name, index, rotation.YawDegrees,
+                    rendered.Width, rendered.Height, rendered.Pixels.ToArray(), pivot.Value.X, pivot.Value.Y, duration);
+            }
+            return frames;
+        }, cancellationToken);
+    }
+
+    public async Task<SpriteExportResult> ExportRotationSheetAsync(
+        string path, int framesPerSecond, float degreesPerSecond,
+        bool animateYaw, bool animatePitch, bool animateRoll,
+        VoxelCameraState camera, VoxelModelRotationState baseRotation,
+        VoxelMeshData mesh, PixelRenderLayout layout,
+        VoxelRenderStyle style, bool transparentBackground,
+        CancellationToken cancellationToken = default)
+    {
+        SpriteFrame[] frames = await RenderRotationFramesAsync(framesPerSecond, degreesPerSecond,
+            animateYaw, animatePitch, animateRoll, camera, baseRotation, mesh, layout, style,
+            transparentBackground, cancellationToken);
+        return await _exporter.ExportAsync(new SpriteSheetExportRequest(path, frames, true, "rotation"), cancellationToken);
+    }
+
     /// <summary>Gets model yaw angles ordered clockwise from the unrotated model.</summary>
     public static float[] GetClockwiseDirectionYaws(int directionCount)
     {

@@ -16,13 +16,15 @@ public sealed class SpriteFrame
         int height,
         IEnumerable<Rgba32Color> pixels,
         int pivotX,
-        int pivotY)
+        int pivotY,
+        int durationMilliseconds = 100)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
         if (directionIndex < 0) throw new ArgumentOutOfRangeException(nameof(directionIndex));
         if (!float.IsFinite(yawDegrees)) throw new ArgumentOutOfRangeException(nameof(yawDegrees));
         if (width <= 0) throw new ArgumentOutOfRangeException(nameof(width));
         if (height <= 0) throw new ArgumentOutOfRangeException(nameof(height));
+        if (durationMilliseconds <= 0) throw new ArgumentOutOfRangeException(nameof(durationMilliseconds));
         _pixels = pixels?.ToArray() ?? throw new ArgumentNullException(nameof(pixels));
         if (_pixels.Length != checked(width * height))
         {
@@ -36,6 +38,7 @@ public sealed class SpriteFrame
         Height = height;
         PivotX = pivotX;
         PivotY = pivotY;
+        DurationMilliseconds = durationMilliseconds;
     }
 
     /// <summary>Gets the stable frame name used by metadata.</summary>
@@ -61,6 +64,9 @@ public sealed class SpriteFrame
 
     /// <summary>Gets the vertical frame-local pivot.</summary>
     public int PivotY { get; }
+
+    /// <summary>Gets the display time used by GIF and Aseprite metadata.</summary>
+    public int DurationMilliseconds { get; }
 }
 
 /// <summary>Defines one horizontal PNG sheet export and its optional Aseprite JSON file.</summary>

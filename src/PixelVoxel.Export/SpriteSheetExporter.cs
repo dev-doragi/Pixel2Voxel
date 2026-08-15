@@ -127,7 +127,7 @@ public sealed class SpriteSheetExporter : ISpriteExporter
             trimmed = false,
             spriteSourceSize = new { x = 0, y = 0, w = frame.Width, h = frame.Height },
             sourceSize = new { w = frame.Width, h = frame.Height },
-            duration = 100,
+            duration = frame.DurationMilliseconds,
         }).ToArray();
         object[] frameTags = request.Frames.Count > 1
             ?

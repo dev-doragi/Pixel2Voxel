@@ -30,11 +30,14 @@ public sealed class PixelVoxelProject
     public PixelVoxelProject(
         VoxelDocument document,
         OrthographicViewSet? sourceViews,
-        PixelVoxelProjectSettings settings)
+        PixelVoxelProjectSettings settings,
+        IEnumerable<Rgba32Color>? palette = null)
     {
         Document = document ?? throw new ArgumentNullException(nameof(document));
         SourceViews = sourceViews;
         Settings = settings ?? throw new ArgumentNullException(nameof(settings));
+        Palette = palette?.ToArray() ?? [];
+        if (Palette.Count > 32) throw new ArgumentOutOfRangeException(nameof(palette));
     }
 
     /// <summary>Gets the editable document restored from the project.</summary>
@@ -45,6 +48,9 @@ public sealed class PixelVoxelProject
 
     /// <summary>Gets project-specific presentation and export values.</summary>
     public PixelVoxelProjectSettings Settings { get; }
+
+    /// <summary>Gets up to 32 project-owned opaque editing colors.</summary>
+    public IReadOnlyList<Rgba32Color> Palette { get; }
 }
 
 /// <summary>Defines the boundary for portable Pixel Voxel project persistence.</summary>

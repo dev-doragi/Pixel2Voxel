@@ -1,5 +1,31 @@
 # Coordinate System
 
+## Unity OBJ export
+
+- Model +Y maps to Unity up and model +Z maps to Unity forward.
+- One voxel edge equals one Unity unit.
+- X and Z are translated so the model bottom center is the exported origin; Y=0 remains the floor.
+- Exported faces retain the surface mesher's outward winding and normals.
+
+## Camera face snap
+
+- Free View snaps to the six canonical sheet faces while orbiting.
+- Canonical sheet-face normals follow the current object rotation; snapping never targets an unrelated world-axis face.
+- Releasing pan or the rotation gizmo does not commit a camera snap. Only an orbit release commits the detent.
+- The snap range is user-configurable from 1 to 30 degrees and defaults to 10 degrees.
+- The unsnapped orbit path is retained so dragging beyond the range exits the detent smoothly.
+
+## Rotation gizmo
+
+- Gizmo drags are evaluated from the orientation captured at pointer-down, so the ring geometry and axis do not drift during a drag.
+- Gizmo rotation consumes relative pointer movement only: right/down are positive and left/up are negative.
+- During a Windows gizmo drag the pointer is recentered after each movement, allowing an unbounded drag without producing rotation while the mouse is stationary.
+- X edits Pitch, Y edits Yaw, and Z edits Roll as deterministic Euler controls.
+- Pointer motion is sign-corrected from downward-positive screen coordinates to the gizmo's visible positive rotation direction.
+- Reset Camera + Rotation restores both the Pixel 2:1 camera and the model rotation, and stops rotation animation.
+- Reset Rotation stops every rotation animation axis before restoring the model identity, so the next animation tick cannot rotate it again.
+- A full view reset also clears camera pan and returns viewport zoom to Fit.
+
 ## v1 모델 좌표
 
 - +X: 모델의 오른쪽

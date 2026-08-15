@@ -1,5 +1,7 @@
 # Pixel Voxel
 
+The editor now includes resizable/collapsible side panels, categorized inspector search, project palettes, an exact voxel-face eyedropper, rotation GIF/Aseprite sheet export, and Unity-ready OBJ packages with pixel-preserving texture import settings.
+
 Pixel Voxel은 여섯 방향의 픽셀 PNG를 공간적인 셀 점유 정보로 재구성하고, 회전 가능한 저해상도 3D 픽셀 프레임으로 표시하는 독립 데스크톱 프로그램입니다.
 
 ## 현재 상태

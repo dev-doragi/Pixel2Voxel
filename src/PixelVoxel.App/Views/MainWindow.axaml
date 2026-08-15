@@ -5,21 +5,19 @@
         xmlns:views="using:PixelVoxel.App.Views"
         x:Class="PixelVoxel.App.Views.MainWindow"
         x:DataType="vm:MainWindowViewModel"
-        Width="1280"
-        Height="820"
-        MinWidth="960"
-        MinHeight="600"
+        Width="1360" Height="860" MinWidth="720" MinHeight="600"
+        Background="{StaticResource AppBackgroundBrush}"
         Title="{Binding WindowTitle}"
         KeyDown="Window_KeyDown">
-  <Grid RowDefinitions="Auto,*,Auto">
+  <Grid RowDefinitions="Auto,42,*,28">
     <Menu Grid.Row="0">
       <MenuItem Header="File">
         <MenuItem Header="New Project" Click="NewProject_Click" />
         <MenuItem Header="Open Project..." Click="OpenProject_Click" />
-        <MenuItem Header="Save Project" IsEnabled="{Binding HasDocument}" Click="SaveProject_Click" />
-        <MenuItem Header="Save Project As..." IsEnabled="{Binding HasDocument}" Click="SaveProjectAs_Click" />
+        <MenuItem Header="Save" IsEnabled="{Binding HasDocument}" Click="SaveProject_Click" />
+        <MenuItem Header="Save As..." IsEnabled="{Binding HasDocument}" Click="SaveProjectAs_Click" />
         <Separator />
-        <MenuItem Header="Import 6×1 Sheet..." Click="OpenHorizontalSheet_Click" />
+        <MenuItem Header="Import 6 x 1 Sheet..." Click="OpenHorizontalSheet_Click" />
       </MenuItem>
       <MenuItem Header="Edit">
         <MenuItem Header="Undo" IsEnabled="{Binding CanUndo}" Click="Undo_Click" />
@@ -35,152 +33,245 @@
         <MenuItem Header="Right" Tag="Right" Click="SelectPreset_Click" />
         <MenuItem Header="Top" Tag="Top" Click="SelectPreset_Click" />
       </MenuItem>
-      <MenuItem Header="Model" />
       <MenuItem Header="Export">
-        <MenuItem Header="Export Current View PNG..."
-                  IsEnabled="{Binding CanExport}"
-                  Click="ExportCurrentView_Click" />
-        <MenuItem Header="Export Direction Sheet..."
-                  IsEnabled="{Binding CanExport}"
-                  Click="ExportDirectionSheet_Click" />
+        <MenuItem Header="Current View PNG..." IsEnabled="{Binding CanExport}" Click="ExportCurrentView_Click" />
+        <MenuItem Header="Direction Sheet..." IsEnabled="{Binding CanExport}" Click="ExportDirectionSheet_Click" />
       </MenuItem>
-      <MenuItem Header="Help" />
     </Menu>
 
-    <Grid Grid.Row="1" ColumnDefinitions="430,*,340">
-      <Border Grid.Column="0"
-              Padding="14"
-              BorderBrush="{DynamicResource ThemeBorderLowBrush}"
-              BorderThickness="0,0,1,0">
-        <ScrollViewer>
-          <StackPanel Spacing="10">
-            <TextBlock Text="Import Alignment" FontSize="16" FontWeight="SemiBold" />
-            <Grid ColumnDefinitions="*,*">
-              <Border Grid.Column="0" Margin="0,0,4,0" Padding="10"
-                      BorderBrush="{DynamicResource ThemeBorderMidBrush}" BorderThickness="1"
-                      DragDrop.AllowDrop="True"
-                      DragDrop.DragOver="PngDrop_DragOver"
-                      DragDrop.Drop="SheetDrop_Drop">
-                <StackPanel Spacing="6">
-                  <TextBlock Text="6×1 Sheet Drop" FontWeight="SemiBold" />
-                  <Button Click="OpenHorizontalSheet_Click" Content="Choose Sheet..." />
-                </StackPanel>
-              </Border>
-              <Border Grid.Column="1" Margin="4,0,0,0" Padding="10"
-                      BorderBrush="{DynamicResource ThemeBorderMidBrush}" BorderThickness="1"
-                      DragDrop.AllowDrop="True"
-                      DragDrop.DragOver="PngDrop_DragOver"
-                      DragDrop.Drop="SeparateDrop_Drop">
-                <StackPanel Spacing="6">
-                  <TextBlock Text="Separate PNG Drop" FontWeight="SemiBold" />
-                  <Button Click="ChooseSeparateFiles_Click" Content="Choose PNGs..." />
-                </StackPanel>
-              </Border>
-            </Grid>
+    <Border Grid.Row="1" Classes="toolbar" BorderThickness="0,0,0,1" Padding="8,5">
+      <Grid ColumnDefinitions="Auto,Auto,Auto,16,Auto,*,Auto">
+        <Button Classes="icon-button" IsEnabled="{Binding HasDocument}" Click="SaveProject_Click" ToolTip.Tip="Save project">
+          <PathIcon Data="M3,3 L13,3 L16,6 L16,17 L3,17 Z M6,3 L6,8 L13,8 L13,3 M6,12 L13,12 L13,16 L6,16 Z" />
+        </Button>
+        <Button Grid.Column="1" Classes="icon-button" IsEnabled="{Binding CanUndo}" Click="Undo_Click" ToolTip.Tip="Undo">
+          <PathIcon Data="M8,5 L4,9 L8,13 L8,10 C13,10 15,12 16,16 C16,9 13,6 8,6 Z" />
+        </Button>
+        <Button Grid.Column="2" Classes="icon-button" IsEnabled="{Binding CanRedo}" Click="Redo_Click" ToolTip.Tip="Redo">
+          <PathIcon Data="M12,5 L16,9 L12,13 L12,10 C7,10 5,12 4,16 C4,9 7,6 12,6 Z" />
+        </Button>
+        <TextBlock Grid.Column="4" VerticalAlignment="Center" FontSize="14"
+                   FontWeight="SemiBold" Text="{Binding WorkspaceTitle}" />
+        <StackPanel Grid.Column="6" Orientation="Horizontal" Spacing="4">
+          <Button Click="ToggleRightPanel_Click" Content="Inspector" ToolTip.Tip="Toggle inspector" />
+          <Button IsVisible="{Binding IsViewportWorkspace}" Tag="Pixel2To1" Click="SelectPreset_Click" Content="2:1" />
+          <Button IsVisible="{Binding IsViewportWorkspace}" Tag="TrueIsometric" Click="SelectPreset_Click" Content="Iso" />
+          <Button IsVisible="{Binding IsViewportWorkspace}" Click="FitZoom_Click" Content="Fit" />
+        </StackPanel>
+      </Grid>
+    </Border>
 
-            <Expander Header="Assign separate files manually">
-              <StackPanel Spacing="6">
-                <Grid ColumnDefinitions="72,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto">
-                  <Button Grid.Row="0" Tag="Front" Click="SelectFaceFile_Click" Content="Front" />
-                  <TextBlock Grid.Row="0" Grid.Column="1" Margin="8,0,0,0" VerticalAlignment="Center" Text="{Binding FrontPath}" TextTrimming="CharacterEllipsis" />
-                  <Button Grid.Row="1" Tag="Right" Click="SelectFaceFile_Click" Content="Right" />
-                  <TextBlock Grid.Row="1" Grid.Column="1" Margin="8,0,0,0" VerticalAlignment="Center" Text="{Binding RightPath}" TextTrimming="CharacterEllipsis" />
-                  <Button Grid.Row="2" Tag="Back" Click="SelectFaceFile_Click" Content="Back" />
-                  <TextBlock Grid.Row="2" Grid.Column="1" Margin="8,0,0,0" VerticalAlignment="Center" Text="{Binding BackPath}" TextTrimming="CharacterEllipsis" />
-                  <Button Grid.Row="3" Tag="Left" Click="SelectFaceFile_Click" Content="Left" />
-                  <TextBlock Grid.Row="3" Grid.Column="1" Margin="8,0,0,0" VerticalAlignment="Center" Text="{Binding LeftPath}" TextTrimming="CharacterEllipsis" />
-                  <Button Grid.Row="4" Tag="Top" Click="SelectFaceFile_Click" Content="Top" />
-                  <TextBlock Grid.Row="4" Grid.Column="1" Margin="8,0,0,0" VerticalAlignment="Center" Text="{Binding TopPath}" TextTrimming="CharacterEllipsis" />
-                  <Button Grid.Row="5" Tag="Bottom" Click="SelectFaceFile_Click" Content="Bottom" />
-                  <TextBlock Grid.Row="5" Grid.Column="1" Margin="8,0,0,0" VerticalAlignment="Center" Text="{Binding BottomPath}" TextTrimming="CharacterEllipsis" />
+    <Grid Grid.Row="2">
+      <Grid.ColumnDefinitions>
+        <ColumnDefinition Width="68" />
+        <ColumnDefinition Width="{Binding LeftPanelGridWidth, Mode=TwoWay}" MinWidth="0" MaxWidth="480" />
+        <ColumnDefinition Width="4" />
+        <ColumnDefinition Width="*" MinWidth="480" />
+        <ColumnDefinition Width="4" />
+        <ColumnDefinition Width="{Binding RightPanelGridWidth, Mode=TwoWay}" MinWidth="0" MaxWidth="480" />
+      </Grid.ColumnDefinitions>
+
+      <views:ActivityRail Grid.Column="0" />
+
+      <!-- Context panel: exactly one workspace is visible. -->
+      <Border Grid.Column="1" Classes="panel" BorderThickness="0,0,1,0">
+        <Grid>
+          <ScrollViewer IsVisible="{Binding IsImportWorkspace}" HorizontalContentAlignment="Stretch"
+                        HorizontalScrollBarVisibility="Disabled">
+            <StackPanel Margin="14" Spacing="10">
+              <TextBlock Text="IMPORT SESSION" Classes="section-title" />
+              <TextBlock Text="Source setup" FontSize="19" FontWeight="SemiBold" />
+              <TextBlock Classes="muted"
+                         Text="Choose the source in the canvas, then use these tools only when manual mapping is needed."
+                         TextWrapping="Wrap" />
+              <Expander Header="Assign faces manually">
+                <StackPanel Margin="0,6,0,0" Spacing="4">
+                  <Button Tag="Front" Click="SelectFaceFile_Click" Content="Front..." />
+                  <Button Tag="Right" Click="SelectFaceFile_Click" Content="Right..." />
+                  <Button Tag="Back" Click="SelectFaceFile_Click" Content="Back..." />
+                  <Button Tag="Left" Click="SelectFaceFile_Click" Content="Left..." />
+                  <Button Tag="Top" Click="SelectFaceFile_Click" Content="Top..." />
+                  <Button Tag="Bottom" Click="SelectFaceFile_Click" Content="Bottom..." />
+                  <Button Click="ReconstructSeparate_Click" Content="Inspect assigned views" />
+                </StackPanel>
+              </Expander>
+              <Expander Header="Recent imports">
+                <Grid Margin="0,6,0,0" ColumnDefinitions="*,Auto">
+                  <ComboBox ItemsSource="{Binding RecentImports}" SelectedItem="{Binding SelectedRecentImport}"
+                            PlaceholderText="Select recent input">
+                    <ComboBox.ItemTemplate>
+                      <DataTemplate x:DataType="services:RecentImportSettings">
+                        <TextBlock Text="{Binding DisplayName}" />
+                      </DataTemplate>
+                    </ComboBox.ItemTemplate>
+                  </ComboBox>
+                  <Button Grid.Column="1" Margin="6,0,0,0" Click="OpenRecentImport_Click" Content="Open" />
                 </Grid>
-                <Button Click="ReconstructSeparate_Click" Content="Inspect Assigned Views" />
-              </StackPanel>
-            </Expander>
+              </Expander>
+            </StackPanel>
+          </ScrollViewer>
 
-            <Grid ColumnDefinitions="*,Auto">
-              <ComboBox ItemsSource="{Binding RecentImports}"
-                        SelectedItem="{Binding SelectedRecentImport}"
-                        PlaceholderText="Recent imports">
-                <ComboBox.ItemTemplate>
-                  <DataTemplate x:DataType="services:RecentImportSettings">
-                    <TextBlock Text="{Binding DisplayName}" />
+          <ScrollViewer IsVisible="{Binding IsEditWorkspace}" HorizontalContentAlignment="Stretch"
+                        HorizontalScrollBarVisibility="Disabled">
+            <StackPanel Margin="14" Spacing="10">
+              <TextBlock Text="EDIT TOOLS" Classes="section-title" />
+              <UniformGrid Columns="2">
+                <ToggleButton Margin="2" Tag="View" Click="SelectEditTool_Click" Content="1  View" IsChecked="{Binding IsViewTool, Mode=OneWay}" ToolTip.Tip="Navigate the viewport (1)" />
+                <ToggleButton Margin="2" Tag="Add" Click="SelectEditTool_Click" Content="2  Add" IsChecked="{Binding IsAddTool, Mode=OneWay}" ToolTip.Tip="Add voxels (2)" />
+                <ToggleButton Margin="2" Tag="Erase" Click="SelectEditTool_Click" Content="3  Erase" IsChecked="{Binding IsEraseTool, Mode=OneWay}" ToolTip.Tip="Erase voxels (3)" />
+                <ToggleButton Margin="2" Tag="Paint" Click="SelectEditTool_Click" Content="4  Paint" IsChecked="{Binding IsPaintTool, Mode=OneWay}" ToolTip.Tip="Paint voxel faces (4)" />
+                <ToggleButton Margin="2" Tag="Eyedropper" Click="SelectEditTool_Click" Content="5  Pick" IsChecked="{Binding IsEyedropperTool, Mode=OneWay}" ToolTip.Tip="Sample original face color (5)" />
+                <ToggleButton Margin="2" Tag="Select" Click="SelectEditTool_Click" Content="6  Select" IsChecked="{Binding IsSelectTool, Mode=OneWay}" ToolTip.Tip="Select a voxel box (6)" />
+              </UniformGrid>
+              <Separator />
+              <TextBlock Text="PALETTE" Classes="section-title" />
+              <ColorPicker Color="{Binding EditColor}" IsAlphaEnabled="False" />
+              <Button Click="AddPaletteColor_Click" Content="Add current color" />
+              <ItemsControl ItemsSource="{Binding ProjectPalette}">
+                <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate>
+                    <Grid Margin="2" ColumnDefinitions="28,16">
+                      <Button Width="28" Height="28" Padding="0" Background="{Binding}" Click="SelectPaletteColor_Click" />
+                      <Button Grid.Column="1" Padding="0" Content="×" Tag="{Binding}" Click="RemovePaletteColor_Click" />
+                    </Grid>
                   </DataTemplate>
-                </ComboBox.ItemTemplate>
-              </ComboBox>
-              <Button Grid.Column="1" Margin="8,0,0,0" Click="OpenRecentImport_Click" Content="Open" />
-            </Grid>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+            </StackPanel>
+          </ScrollViewer>
 
-            <ItemsControl ItemsSource="{Binding ImportFaceSlots}" IsVisible="{Binding IsImportDraftLoaded}">
+          <ScrollViewer IsVisible="{Binding IsAnimateWorkspace}" HorizontalContentAlignment="Stretch">
+            <StackPanel Margin="14" Spacing="10">
+              <TextBlock Text="ROTATION" Classes="section-title" />
+              <CheckBox IsChecked="{Binding YawAnimationEnabled}" Content="Yaw · Y axis" />
+              <CheckBox IsChecked="{Binding PitchAnimationEnabled}" Content="Pitch · X axis" />
+              <CheckBox IsChecked="{Binding RollAnimationEnabled}" Content="Roll · Z axis" />
+              <TextBlock Classes="muted" Text="Choose axes first. Preview starts only when you press Play."
+                         TextWrapping="Wrap" />
+              <Button Classes="accent" Click="ToggleAnimationPreview_Click"
+                      IsEnabled="{Binding HasAnimationAxis}"
+                      Content="{Binding AnimationPlayPauseLabel}" />
+              <TextBlock Classes="muted" Text="{Binding ObjectRotationSummary}" TextWrapping="Wrap" />
+              <Grid ColumnDefinitions="*,Auto">
+                <TextBlock Text="Speed" />
+                <TextBlock Grid.Column="1" Text="{Binding AnimationSpeed, StringFormat={}{0:0}°/s}" />
+              </Grid>
+              <Slider Minimum="5" Maximum="180" TickFrequency="5" Value="{Binding AnimationSpeed}" />
+              <Button Click="ResetObject_Click" Content="Reset rotation" />
+            </StackPanel>
+          </ScrollViewer>
+
+          <StackPanel IsVisible="{Binding IsExportWorkspace}" Margin="14" Spacing="8">
+            <TextBlock Text="EXPORT TYPE" Classes="section-title" />
+            <ToggleButton Tag="CurrentView" Click="SelectExportMode_Click"
+                          IsChecked="{Binding IsCurrentViewExport, Mode=OneWay}" Content="Current view PNG" />
+            <ToggleButton Tag="DirectionSheet" Click="SelectExportMode_Click"
+                          IsChecked="{Binding IsDirectionSheetExport, Mode=OneWay}" Content="Direction sheet + JSON" />
+            <ToggleButton Tag="AnimatedGif" Click="SelectExportMode_Click"
+                          IsChecked="{Binding IsAnimatedGifExport, Mode=OneWay}" Content="Animated GIF" />
+            <ToggleButton Tag="AnimationSheet" Click="SelectExportMode_Click"
+                          IsChecked="{Binding IsAnimationSheetExport, Mode=OneWay}" Content="Animation sheet + JSON" />
+            <ToggleButton Tag="UnityObj" Click="SelectExportMode_Click"
+                          IsChecked="{Binding IsUnityObjExport, Mode=OneWay}" Content="Unity OBJ package" />
+          </StackPanel>
+        </Grid>
+      </Border>
+
+      <GridSplitter Grid.Column="2" ResizeDirection="Columns" Background="Transparent"
+                    IsVisible="{Binding LeftPanelVisible}" />
+
+      <!-- Import canvas. -->
+      <Border Grid.Column="3" IsVisible="{Binding IsImportWorkspace}"
+              Margin="12" Padding="14" Classes="card" ClipToBounds="True">
+        <Grid RowDefinitions="38,10,*,44">
+          <UniformGrid Columns="4">
+            <ToggleButton Classes="step" Tag="Source" Click="SelectImportStep_Click"
+                          IsChecked="{Binding IsImportSourceStep, Mode=OneWay}" Content="1  Source" />
+            <ToggleButton Classes="step" Tag="MapAndAlign" Click="SelectImportStep_Click"
+                          IsEnabled="{Binding CanOpenImportReview}"
+                          IsChecked="{Binding IsImportMapStep, Mode=OneWay}" Content="2  Align" />
+            <ToggleButton Classes="step" Tag="Validate" Click="SelectImportStep_Click"
+                          IsEnabled="{Binding CanOpenImportReview}"
+                          IsChecked="{Binding IsImportValidateStep, Mode=OneWay}" Content="3  Validate" />
+            <ToggleButton Classes="step" Tag="Reconstruct" Click="SelectImportStep_Click"
+                          IsEnabled="{Binding CanApplyImport}"
+                          IsChecked="{Binding IsImportReconstructStep, Mode=OneWay}" Content="4  Build" />
+          </UniformGrid>
+          <Grid Grid.Row="2">
+            <StackPanel IsVisible="{Binding IsImportSourceStep}" Width="430"
+                        HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="12">
+              <TextBlock Text="Start with six views" FontSize="26" FontWeight="SemiBold" HorizontalAlignment="Center" />
+              <TextBlock Classes="muted" Text="Front · Right · Back · Left · Top · Bottom" HorizontalAlignment="Center" />
+              <Button Classes="accent" Click="OpenHorizontalSheet_Click" Content="Choose 6 x 1 sheet..." />
+              <Button Click="ChooseSeparateFiles_Click" Content="Choose separate PNGs..." />
+            </StackPanel>
+
+            <ItemsControl ItemsSource="{Binding ImportFaceSlots}" IsVisible="{Binding IsImportMapStep}">
               <ItemsControl.ItemsPanel>
-                <ItemsPanelTemplate>
-                  <UniformGrid Columns="2" />
-                </ItemsPanelTemplate>
+                <ItemsPanelTemplate><UniformGrid Columns="3" Rows="2" /></ItemsPanelTemplate>
               </ItemsControl.ItemsPanel>
               <ItemsControl.ItemTemplate>
                 <DataTemplate x:DataType="vm:ImportFaceSlotViewModel">
-                  <Border Margin="3" Padding="7"
-                          BorderBrush="{DynamicResource ThemeBorderMidBrush}" BorderThickness="1"
+                  <Border Classes="card" Margin="5" Padding="8"
                           DragDrop.AllowDrop="True"
                           DragDrop.DragOver="ImportFaceCard_DragOver"
                           DragDrop.Drop="ImportFaceCard_Drop">
-                    <StackPanel Spacing="5">
-                      <Border Padding="4" Background="#323741"
-                              PointerPressed="ImportFaceHeader_PointerPressed">
-                        <Grid ColumnDefinitions="*,Auto">
-                          <TextBlock Text="{Binding TargetFace}" FontWeight="SemiBold" />
-                          <TextBlock Grid.Column="1" Text="↕ drag" Opacity="0.65" />
-                        </Grid>
-                      </Border>
-                      <TextBlock Text="{Binding SourceName}" FontSize="11" TextTrimming="CharacterEllipsis" />
-                      <Grid Height="112" ClipToBounds="True">
+                    <Grid RowDefinitions="Auto,*,Auto">
+                      <Grid ColumnDefinitions="*,Auto" PointerPressed="ImportFaceHeader_PointerPressed">
+                        <TextBlock Text="{Binding TargetFace}" FontWeight="SemiBold" />
+                        <TextBlock Grid.Column="1" Classes="muted" Text="drag" />
+                      </Grid>
+                      <Grid Grid.Row="1" Margin="0,6" ClipToBounds="True">
                         <views:CheckerboardControl />
                         <Image Source="{Binding PreviewBitmap}" Stretch="Uniform"
                                RenderOptions.BitmapInterpolationMode="None" />
                       </Grid>
-                      <StackPanel Orientation="Horizontal" Spacing="6">
-                        <CheckBox IsChecked="{Binding FlipHorizontal}" Content="Flip H" />
-                        <CheckBox IsChecked="{Binding FlipVertical}" Content="Flip V" />
-                      </StackPanel>
-                      <Grid ColumnDefinitions="Auto,*,Auto,*">
-                        <TextBlock VerticalAlignment="Center" Text="X" />
-                        <NumericUpDown Grid.Column="1" Margin="3,0" Minimum="-4096" Maximum="4096"
-                                       Value="{Binding OffsetX}" FormatString="0" />
-                        <TextBlock Grid.Column="2" VerticalAlignment="Center" Text="Y" />
-                        <NumericUpDown Grid.Column="3" Margin="3,0" Minimum="-4096" Maximum="4096"
-                                       Value="{Binding OffsetY}" FormatString="0" />
-                      </Grid>
-                      <TextBlock Text="{Binding DiagnosticText}" FontSize="10" TextWrapping="Wrap" />
-                      <TextBlock Text="Blocking error" Foreground="#FFFF5A5A" FontSize="10" IsVisible="{Binding HasError}" />
-                      <TextBlock Text="Clipping warning" Foreground="#FFFFB347" FontSize="10" IsVisible="{Binding HasWarning}" />
-                      <Button Tag="{Binding TargetFace}" Click="ResetImportFace_Click" Content="Reset Face" />
-                    </StackPanel>
+                      <TextBlock Grid.Row="2" Classes="muted" Text="{Binding SourceName}"
+                                 TextTrimming="CharacterEllipsis" />
+                    </Grid>
                   </Border>
                 </DataTemplate>
               </ItemsControl.ItemTemplate>
             </ItemsControl>
 
-            <Grid ColumnDefinitions="*,*,*" IsVisible="{Binding IsImportDraftLoaded}">
-              <Button Grid.Column="0" Margin="0,0,4,0" Click="ResetAllImport_Click" Content="Reset All" />
-              <Button Grid.Column="1" Margin="4,0" Click="Reimport_Click" Content="Re-import" />
-              <Button Grid.Column="2" Margin="4,0,0,0" IsEnabled="{Binding CanApplyImport}"
-                      Click="ApplyImport_Click" Content="Apply / Reconstruct" />
-            </Grid>
+            <StackPanel IsVisible="{Binding IsImportValidateStep}" Width="560"
+                        HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="10">
+              <TextBlock Text="Validation" FontSize="26" FontWeight="SemiBold" HorizontalAlignment="Center" />
+              <Border Classes="card" Padding="14">
+                <TextBlock Text="{Binding ImportSummary}" FontFamily="Consolas" TextWrapping="Wrap" />
+              </Border>
+              <Button Click="Reimport_Click" Content="Validate again" />
+            </StackPanel>
 
-            <Separator Margin="0,6" />
-            <TextBlock Text="Import diagnostics" FontWeight="SemiBold" />
-            <TextBlock Text="{Binding ImportSummary}" FontFamily="Consolas" TextWrapping="Wrap" />
-          </StackPanel>
-        </ScrollViewer>
+            <StackPanel IsVisible="{Binding IsImportReconstructStep}" Width="430"
+                        HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="12">
+              <TextBlock Text="Ready to build" FontSize="26" FontWeight="SemiBold" HorizontalAlignment="Center" />
+              <TextBlock Classes="muted" Text="Create an editable voxel document from the reviewed views."
+                         TextAlignment="Center" TextWrapping="Wrap" />
+              <Button Classes="accent" IsEnabled="{Binding CanApplyImport}"
+                      Click="ApplyImport_Click" Content="Reconstruct voxel model" />
+            </StackPanel>
+          </Grid>
+          <Border Grid.Row="3" BorderBrush="{StaticResource HairlineBrush}" BorderThickness="0,1,0,0"
+                  Padding="0,8,0,0">
+            <Grid ColumnDefinitions="Auto,*,Auto">
+              <Button IsEnabled="{Binding CanGoToPreviousImportStep}"
+                      Click="PreviousImportStep_Click" Content="Back" />
+              <TextBlock Grid.Column="1" Classes="muted" HorizontalAlignment="Center"
+                         VerticalAlignment="Center" Text="{Binding ImportValidationStatus}" />
+              <Button Grid.Column="2" Classes="accent"
+                      IsVisible="{Binding CanGoToNextImportStep}"
+                      Click="NextImportStep_Click" Content="{Binding NextImportStepLabel}" />
+            </Grid>
+          </Border>
+        </Grid>
       </Border>
 
-      <Border x:Name="ViewportHost"
-              Grid.Column="1"
-              Margin="12"
-              ClipToBounds="True"
-              Background="#141820"
-              BorderBrush="{DynamicResource ThemeBorderMidBrush}"
-              BorderThickness="1"
+      <!-- Viewport canvas. -->
+      <Border x:Name="ViewportHost" Grid.Column="3" IsVisible="{Binding IsViewportWorkspace}"
+              Margin="12" ClipToBounds="True" Background="#0D1119"
+              BorderBrush="{StaticResource HairlineBrush}" BorderThickness="1" CornerRadius="8"
               PointerPressed="Viewport_PointerPressed"
               PointerMoved="Viewport_PointerMoved"
               PointerReleased="Viewport_PointerReleased"
@@ -192,183 +283,174 @@
                                          ManualScale="{Binding ManualZoomScale}"
                                          IsVisible="{Binding IsCpuFallbackActive}" />
           <views:RotationGizmoControl x:Name="RotationGizmo"
-                                      Width="180" Height="190"
-                                      HorizontalAlignment="Center"
-                                      VerticalAlignment="Center"
-                                      IsVisible="{Binding IsViewMode}"
-                                      IsHitTestVisible="False" />
-          <Border HorizontalAlignment="Center"
-                  VerticalAlignment="Center"
-                  Padding="12,8"
-                  Background="#B0141820"
+                                      Width="116" Height="132" Margin="0,0,12,12"
+                                      HorizontalAlignment="Right" VerticalAlignment="Bottom"
+                                      IsVisible="{Binding IsViewMode}" IsHitTestVisible="False" />
+          <Border HorizontalAlignment="Center" VerticalAlignment="Center"
+                  Padding="14,10" Background="#D0141820"
                   IsVisible="{Binding HasViewportMessage}">
-            <TextBlock Margin="12"
-                       Text="{Binding ViewportMessage}"
-                       TextAlignment="Center"
-                       TextWrapping="Wrap" />
+            <TextBlock Text="{Binding ViewportMessage}" TextAlignment="Center" TextWrapping="Wrap" />
+          </Border>
+          <Border HorizontalAlignment="Left" VerticalAlignment="Bottom" Margin="14"
+                  Padding="10,7" Background="#E0141820" CornerRadius="6"
+                  IsVisible="{Binding IsEditWorkspace}" IsHitTestVisible="False">
+            <StackPanel Spacing="2">
+              <TextBlock Text="{Binding ActiveToolTitle}" FontWeight="SemiBold" />
+              <TextBlock Text="{Binding ActiveToolHint}" Classes="muted" FontSize="11" />
+            </StackPanel>
           </Border>
         </Grid>
       </Border>
 
-      <Border Grid.Column="2"
-              Padding="14"
-              BorderBrush="{DynamicResource ThemeBorderLowBrush}"
-              BorderThickness="1,0,0,0">
-        <ScrollViewer>
-          <StackPanel Spacing="10">
-            <TextBlock Text="Voxel Editor" FontSize="16" FontWeight="SemiBold" />
-            <UniformGrid Columns="5">
-              <Button Margin="2" Tag="View" Click="SelectEditTool_Click" Content="View" />
-              <Button Margin="2" Tag="Add" Click="SelectEditTool_Click" Content="Add" />
-              <Button Margin="2" Tag="Erase" Click="SelectEditTool_Click" Content="Erase" />
-              <Button Margin="2" Tag="Paint" Click="SelectEditTool_Click" Content="Paint" />
-              <Button Margin="2" Tag="Select" Click="SelectEditTool_Click" Content="Select" />
-            </UniformGrid>
-            <TextBlock Text="Current color" />
-            <ColorPicker Color="{Binding EditColor}" IsAlphaEnabled="False" />
-            <TextBlock Text="{Binding SelectionSummary}" TextWrapping="Wrap" Opacity="0.72" />
-            <UniformGrid Columns="3">
-              <Button Margin="2" Tag="-X" Click="MoveSelection_Click" Content="−X" />
-              <Button Margin="2" Tag="+X" Click="MoveSelection_Click" Content="+X" />
-              <Button Margin="2" Tag="-Y" Click="MoveSelection_Click" Content="−Y" />
-              <Button Margin="2" Tag="+Y" Click="MoveSelection_Click" Content="+Y" />
-              <Button Margin="2" Tag="-Z" Click="MoveSelection_Click" Content="−Z" />
-              <Button Margin="2" Tag="+Z" Click="MoveSelection_Click" Content="+Z" />
-            </UniformGrid>
-            <Button Click="DeleteSelection_Click" Content="Delete Selection" />
-            <Expander Header="Resize Volume">
-              <StackPanel Spacing="6">
-                <Grid ColumnDefinitions="Auto,*,Auto,*,Auto,*">
-                  <TextBlock VerticalAlignment="Center" Text="W" />
-                  <NumericUpDown Grid.Column="1" Margin="3,0" Minimum="1" Maximum="1048576" Value="{Binding ResizeWidth}" FormatString="0" />
-                  <TextBlock Grid.Column="2" VerticalAlignment="Center" Text="H" />
-                  <NumericUpDown Grid.Column="3" Margin="3,0" Minimum="1" Maximum="1048576" Value="{Binding ResizeHeight}" FormatString="0" />
-                  <TextBlock Grid.Column="4" VerticalAlignment="Center" Text="D" />
-                  <NumericUpDown Grid.Column="5" Margin="3,0" Minimum="1" Maximum="1048576" Value="{Binding ResizeDepth}" FormatString="0" />
-                </Grid>
-                <Button Click="ResizeVolume_Click" Content="Apply Resize" />
-              </StackPanel>
-            </Expander>
-            <TextBlock Text="Left-drag: active tool · Shift+Paint: all faces · Right-drag: orbit · Middle-drag: pan"
-                       TextWrapping="Wrap" Opacity="0.72" />
+      <GridSplitter Grid.Column="4" ResizeDirection="Columns" Background="Transparent"
+                    IsVisible="{Binding RightPanelVisible}" />
 
-            <Separator Margin="0,6" />
-            <TextBlock Text="Camera" FontSize="16" FontWeight="SemiBold" />
-            <TextBlock Text="{Binding CameraSummary}" TextWrapping="Wrap" />
-            <CheckBox IsChecked="{Binding CameraFaceSnapEnabled}"
-                      Content="Face-aligned snap (2°)" />
-            <UniformGrid Columns="2" Rows="3">
-              <Button Margin="2" Tag="Pixel2To1" Click="SelectPreset_Click" Content="Pixel 2:1" />
-              <Button Margin="2" Tag="TrueIsometric" Click="SelectPreset_Click" Content="True Iso" />
-              <Button Margin="2" Tag="Front" Click="SelectPreset_Click" Content="Front" />
-              <Button Margin="2" Tag="Right" Click="SelectPreset_Click" Content="Right" />
-              <Button Margin="2" Tag="Top" Click="SelectPreset_Click" Content="Top" />
-              <Button Margin="2" Click="LoadSavedDefault_Click" Content="Saved Default" />
-            </UniformGrid>
-            <UniformGrid Columns="2">
-              <Button Margin="2" Click="EnterFreeView_Click" Content="Free Rotation" />
-              <Button Margin="2" Click="ResetView_Click" Content="Reset View" />
-            </UniformGrid>
-            <UniformGrid Columns="2">
-              <Button Margin="2" Click="ResetCamera_Click" Content="Reset Camera" />
-              <Button Margin="2" Click="ResetObject_Click" Content="Reset Object" />
-            </UniformGrid>
-            <Button Click="SaveCurrentAsDefault_Click" Content="Save Current as Default" />
-            <Grid ColumnDefinitions="*,Auto">
-              <TextBlock VerticalAlignment="Center" Text="Zoom" />
-              <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
-                <TextBlock VerticalAlignment="Center" Text="{Binding ZoomSummary}" />
-                <Button Click="FitZoom_Click" Content="Fit" />
-              </StackPanel>
-            </Grid>
-            <TextBlock Text="Right-drag: orbit · Middle-drag: pan · Wheel: integer zoom"
-                       TextWrapping="Wrap" Opacity="0.72" />
+      <!-- Contextual inspector: no tabs and no duplicated tools. -->
+      <Border Grid.Column="5" Classes="panel" BorderThickness="1,0,0,0">
+        <ScrollViewer HorizontalContentAlignment="Stretch" HorizontalScrollBarVisibility="Disabled">
+          <Grid Margin="14">
+            <StackPanel IsVisible="{Binding IsImportWorkspace}" Spacing="8">
+              <TextBlock Text="FACE ALIGNMENT" Classes="section-title" />
+              <TextBlock Classes="muted" Text="Select a mapped face in the canvas to edit its alignment."
+                         TextWrapping="Wrap" />
+              <Border Classes="card" Padding="12" DataContext="{Binding SelectedImportFaceSlot}"
+                      IsVisible="{Binding $parent[Window].((vm:MainWindowViewModel)DataContext).IsImportDraftLoaded}">
+                <StackPanel x:DataType="vm:ImportFaceSlotViewModel" Spacing="8">
+                  <TextBlock Text="{Binding TargetFace}" FontSize="18" FontWeight="SemiBold" />
+                  <TextBlock Classes="muted" Text="{Binding SourceName}" TextTrimming="CharacterEllipsis" />
+                  <StackPanel Orientation="Horizontal" Spacing="8">
+                    <CheckBox IsChecked="{Binding FlipHorizontal}" Content="Flip H" />
+                    <CheckBox IsChecked="{Binding FlipVertical}" Content="Flip V" />
+                  </StackPanel>
+                  <Grid ColumnDefinitions="Auto,*,Auto,*">
+                    <TextBlock VerticalAlignment="Center" Text="X" />
+                    <NumericUpDown Grid.Column="1" Margin="4,0" Minimum="-4096" Maximum="4096"
+                                   Value="{Binding OffsetX}" FormatString="0" />
+                    <TextBlock Grid.Column="2" VerticalAlignment="Center" Text="Y" />
+                    <NumericUpDown Grid.Column="3" Margin="4,0" Minimum="-4096" Maximum="4096"
+                                   Value="{Binding OffsetY}" FormatString="0" />
+                  </Grid>
+                  <TextBlock Foreground="{StaticResource DangerBrush}" IsVisible="{Binding HasError}"
+                             Text="{Binding DiagnosticText}" TextWrapping="Wrap" />
+                  <Button Tag="{Binding TargetFace}" Click="ResetImportFace_Click" Content="Reset face" />
+                </StackPanel>
+              </Border>
+              <Expander Header="Diagnostics">
+                <TextBlock Margin="0,6,0,0" Text="{Binding ImportSummary}"
+                           FontFamily="Consolas" TextWrapping="Wrap" />
+              </Expander>
+            </StackPanel>
 
-            <Separator Margin="0,6" />
-            <TextBlock Text="Animation" FontSize="16" FontWeight="SemiBold" />
-            <CheckBox IsChecked="{Binding YawAnimationEnabled}" Content="Yaw (Y) 360° loop" />
-            <CheckBox IsChecked="{Binding PitchAnimationEnabled}" Content="Pitch (X) 360° loop" />
-            <CheckBox IsChecked="{Binding RollAnimationEnabled}" Content="Roll (Z) 360° loop" />
-            <TextBlock Text="{Binding ObjectRotationSummary}" TextWrapping="Wrap" Opacity="0.72" />
-            <Grid ColumnDefinitions="*,Auto">
-              <TextBlock VerticalAlignment="Center" Text="View-relative Roll" />
-              <Button Grid.Column="1" Click="ResetObject_Click" Content="Reset" />
-            </Grid>
-            <Slider Minimum="-180" Maximum="180" TickFrequency="1"
-                    Value="{Binding ModelRollDegrees}" />
-            <TextBlock Text="View mode: drag Local X/Y/Z rings or the white View Roll ring · Esc cancels"
-                       TextWrapping="Wrap" Opacity="0.72" />
-            <Grid ColumnDefinitions="*,Auto">
-              <TextBlock Text="Speed" />
-              <TextBlock Grid.Column="1" Text="{Binding AnimationSpeed, StringFormat={}{0:0}°/s}" />
-            </Grid>
-            <Slider Minimum="5" Maximum="180" TickFrequency="5"
-                    Value="{Binding AnimationSpeed}" />
+            <StackPanel IsVisible="{Binding IsEditWorkspace}" Spacing="8">
+              <TextBlock Text="SELECTION" Classes="section-title" />
+              <TextBlock Text="{Binding SelectionSummary}" TextWrapping="Wrap" />
+              <UniformGrid Columns="3">
+                <Button Margin="2" Tag="-X" Click="MoveSelection_Click" Content="-X" />
+                <Button Margin="2" Tag="+X" Click="MoveSelection_Click" Content="+X" />
+                <Button Margin="2" Tag="-Y" Click="MoveSelection_Click" Content="-Y" />
+                <Button Margin="2" Tag="+Y" Click="MoveSelection_Click" Content="+Y" />
+                <Button Margin="2" Tag="-Z" Click="MoveSelection_Click" Content="-Z" />
+                <Button Margin="2" Tag="+Z" Click="MoveSelection_Click" Content="+Z" />
+              </UniformGrid>
+              <Button Click="DeleteSelection_Click" Content="Delete selection" />
+              <Expander Header="Volume">
+                <StackPanel Margin="0,6,0,0" Spacing="6">
+                  <Grid ColumnDefinitions="Auto,*,Auto,*,Auto,*">
+                    <TextBlock Text="W" VerticalAlignment="Center" />
+                    <NumericUpDown Grid.Column="1" Margin="3,0" Minimum="1" Maximum="1048576" Value="{Binding ResizeWidth}" />
+                    <TextBlock Grid.Column="2" Text="H" VerticalAlignment="Center" />
+                    <NumericUpDown Grid.Column="3" Margin="3,0" Minimum="1" Maximum="1048576" Value="{Binding ResizeHeight}" />
+                    <TextBlock Grid.Column="4" Text="D" VerticalAlignment="Center" />
+                    <NumericUpDown Grid.Column="5" Margin="3,0" Minimum="1" Maximum="1048576" Value="{Binding ResizeDepth}" />
+                  </Grid>
+                  <Button Click="ResizeVolume_Click" Content="Apply resize" />
+                </StackPanel>
+              </Expander>
+              <Expander Header="Camera" IsExpanded="True">
+                <StackPanel Margin="0,6,0,0" Spacing="6">
+                  <TextBlock Classes="muted" Text="{Binding CameraSummary}" TextWrapping="Wrap" />
+                  <CheckBox IsChecked="{Binding CameraFaceSnapEnabled}" Content="Snap to sheet faces" />
+                  <Grid ColumnDefinitions="*,120">
+                    <TextBlock Text="Snap angle" VerticalAlignment="Center" />
+                    <NumericUpDown Grid.Column="1" Minimum="1" Maximum="30" Value="{Binding CameraFaceSnapAngle}" />
+                  </Grid>
+                  <UniformGrid Columns="2">
+                    <Button Margin="2" Tag="Front" Click="SelectPreset_Click" Content="Front" />
+                    <Button Margin="2" Tag="Right" Click="SelectPreset_Click" Content="Right" />
+                    <Button Margin="2" Tag="Top" Click="SelectPreset_Click" Content="Top" />
+                    <Button Margin="2" Click="ResetView_Click" Content="Reset" />
+                  </UniformGrid>
+                </StackPanel>
+              </Expander>
+              <Expander Header="Rendering">
+                <StackPanel Margin="0,6,0,0" Spacing="6">
+                  <CheckBox IsChecked="{Binding LightingEnabled}" Content="Directional lighting" />
+                  <TextBlock Text="Light azimuth" />
+                  <Slider Minimum="-180" Maximum="180" Value="{Binding LightAzimuth}" />
+                  <TextBlock Text="Light elevation" />
+                  <Slider Minimum="-90" Maximum="90" Value="{Binding LightElevation}" />
+                  <CheckBox IsChecked="{Binding OutlineEnabled}" Content="Pixel outline" />
+                  <CheckBox IsChecked="{Binding IncludeDepthOutline}" Content="Include depth edges" />
+                  <TextBlock Text="Outline color" />
+                  <ColorPicker Color="{Binding OutlineColor}" IsAlphaEnabled="False" />
+                  <TextBlock Text="Background" />
+                  <ColorPicker Color="{Binding BackgroundColor}" IsAlphaEnabled="False" />
+                </StackPanel>
+              </Expander>
+            </StackPanel>
 
-            <Separator Margin="0,6" />
-            <TextBlock Text="Lighting" FontSize="16" FontWeight="SemiBold" />
-            <CheckBox IsChecked="{Binding LightingEnabled}" Content="4-step directional light" />
-            <TextBlock Text="Directional light uses rotation only; position does not affect parallel light rays."
-                       TextWrapping="Wrap" Opacity="0.72" />
-            <Grid ColumnDefinitions="*,Auto">
-              <TextBlock Text="Rotation Y (Azimuth)" />
-              <TextBlock Grid.Column="1" Text="{Binding LightAzimuth, StringFormat={}{0:0}°}" />
-            </Grid>
-            <Slider Minimum="-180" Maximum="180" TickFrequency="5"
-                    Value="{Binding LightAzimuth}" />
-            <Grid ColumnDefinitions="*,Auto">
-              <TextBlock Text="Rotation X (Elevation)" />
-              <TextBlock Grid.Column="1" Text="{Binding LightElevation, StringFormat={}{0:0}°}" />
-            </Grid>
-            <Slider Minimum="-90" Maximum="90" TickFrequency="5"
-                    Value="{Binding LightElevation}" />
-            <Grid ColumnDefinitions="*,Auto">
-              <TextBlock Text="Ambient" />
-              <TextBlock Grid.Column="1" Text="{Binding Ambient, StringFormat={}{0:0.00}}" />
-            </Grid>
-            <Slider Minimum="0" Maximum="1" TickFrequency="0.05"
-                    Value="{Binding Ambient}" />
-            <Grid ColumnDefinitions="*,Auto">
-              <TextBlock Text="Intensity" />
-              <TextBlock Grid.Column="1" Text="{Binding Intensity, StringFormat={}{0:0.00}}" />
-            </Grid>
-            <Slider Minimum="0" Maximum="1" TickFrequency="0.05"
-                    Value="{Binding Intensity}" />
+            <StackPanel IsVisible="{Binding IsAnimateWorkspace}" Spacing="8">
+              <TextBlock Text="ANIMATION OUTPUT" Classes="section-title" />
+              <TextBlock Classes="muted" Text="{Binding AnimationExportCameraSummary}" TextWrapping="Wrap" />
+              <Grid ColumnDefinitions="*,120">
+                <TextBlock Text="FPS" VerticalAlignment="Center" />
+                <NumericUpDown Grid.Column="1" Minimum="1" Maximum="60" Value="{Binding AnimationFramesPerSecond}" />
+              </Grid>
+              <Grid ColumnDefinitions="*,120">
+                <TextBlock Text="GIF scale" VerticalAlignment="Center" />
+                <NumericUpDown Grid.Column="1" Minimum="25" Maximum="1000" Increment="25"
+                               Value="{Binding GifExportResizePercent}" FormatString="0'%'" />
+              </Grid>
+              <Button Classes="accent" IsEnabled="{Binding CanExport}"
+                      Click="ExportAnimatedGif_Click" Content="Export animated GIF..." />
+              <Button IsEnabled="{Binding CanExport}"
+                      Click="ExportAnimationSheet_Click" Content="Export sheet + JSON..." />
+            </StackPanel>
 
-            <Separator Margin="0,6" />
-            <TextBlock Text="Outline" FontSize="16" FontWeight="SemiBold" />
-            <CheckBox IsChecked="{Binding OutlineEnabled}" Content="1px pixel outline" />
-            <CheckBox IsChecked="{Binding IncludeDepthOutline}" Content="Include normal/depth edges" />
-            <TextBlock Text="Color" />
-            <ColorPicker Color="{Binding OutlineColor}" IsAlphaEnabled="False" />
-
-            <Separator Margin="0,6" />
-            <TextBlock Text="Background" FontSize="16" FontWeight="SemiBold" />
-            <ColorPicker Color="{Binding BackgroundColor}" IsAlphaEnabled="False" />
-
-            <Separator Margin="0,6" />
-            <TextBlock Text="Sprite Export" FontSize="16" FontWeight="SemiBold" />
-            <TextBlock Text="{Binding ExportSummary}" TextWrapping="Wrap" Opacity="0.72" />
-            <TextBlock Text="Direction count" />
-            <UniformGrid Columns="3">
-              <Button Margin="2" Tag="4" Click="SelectExportDirectionCount_Click" Content="4" />
-              <Button Margin="2" Tag="8" Click="SelectExportDirectionCount_Click" Content="8" />
-              <Button Margin="2" Tag="16" Click="SelectExportDirectionCount_Click" Content="16" />
-            </UniformGrid>
-            <CheckBox IsChecked="{Binding ExportTrueIsometric}" Content="Use True Isometric camera" />
-            <CheckBox IsChecked="{Binding ExportTransparentBackground}" Content="Transparent background" />
-            <Button IsEnabled="{Binding CanExport}" Click="ExportCurrentView_Click" Content="Export Current View PNG..." />
-            <Button IsEnabled="{Binding CanExport}" Click="ExportDirectionSheet_Click" Content="Export Direction Sheet + JSON..." />
-          </StackPanel>
+            <StackPanel IsVisible="{Binding IsExportWorkspace}" Spacing="8">
+              <TextBlock Text="EXPORT OPTIONS" Classes="section-title" />
+              <TextBlock Classes="muted" Text="{Binding ExportSummary}" TextWrapping="Wrap" />
+              <TextBlock Text="Direction count" />
+              <UniformGrid Columns="3">
+                <Button Margin="2" Tag="4" Click="SelectExportDirectionCount_Click" Content="4" />
+                <Button Margin="2" Tag="8" Click="SelectExportDirectionCount_Click" Content="8" />
+                <Button Margin="2" Tag="16" Click="SelectExportDirectionCount_Click" Content="16" />
+              </UniformGrid>
+              <CheckBox IsChecked="{Binding ExportTrueIsometric}" Content="True isometric camera" />
+              <CheckBox IsChecked="{Binding ExportTransparentBackground}" Content="Transparent background" />
+              <Button Classes="accent" IsEnabled="{Binding CanExport}"
+                      Click="PrimaryExport_Click" Content="{Binding PrimaryExportLabel}" />
+            </StackPanel>
+          </Grid>
         </ScrollViewer>
       </Border>
+
+      <Button Grid.Column="3" Width="24" Height="48" Margin="-12,0,0,0" Padding="0"
+              HorizontalAlignment="Left" VerticalAlignment="Center"
+              IsVisible="{Binding LeftPanelVisible}" Click="ToggleLeftPanel_Click"
+              Content="‹" ToolTip.Tip="Collapse context panel" />
+      <Button Grid.Column="3" Width="24" Height="48" Margin="-2,0,0,0" Padding="0"
+              HorizontalAlignment="Left" VerticalAlignment="Center"
+              IsVisible="{Binding IsLeftPanelCollapsed}" Click="ToggleLeftPanel_Click"
+              Content="›" ToolTip.Tip="Open context panel" />
     </Grid>
 
-    <Border Grid.Row="2"
-            Padding="8,4"
-            BorderBrush="{DynamicResource ThemeBorderLowBrush}"
-            BorderThickness="0,1,0,0">
-      <TextBlock Text="{Binding StatusText}" />
+    <Border Grid.Row="3" Background="#0E121B" BorderBrush="{StaticResource HairlineBrush}"
+            BorderThickness="0,1,0,0" Padding="10,4">
+      <Grid ColumnDefinitions="Auto,*">
+        <Ellipse Width="7" Height="7" Fill="{StaticResource AccentBrush}" VerticalAlignment="Center" />
+        <TextBlock Grid.Column="1" Margin="8,0,0,0" Classes="muted" Text="{Binding StatusText}" />
+      </Grid>
     </Border>
   </Grid>
 </Window>

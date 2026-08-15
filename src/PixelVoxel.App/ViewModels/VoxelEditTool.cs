@@ -15,6 +15,9 @@ public enum VoxelEditTool
     /// <summary>Changes picked face colors.</summary>
     Paint,
 
+    /// <summary>Samples the exact source color of a picked exposed face.</summary>
+    Eyedropper,
+
     /// <summary>Defines an axis-aligned selection from two picked voxels.</summary>
     Select,
 }

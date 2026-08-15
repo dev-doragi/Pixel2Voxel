@@ -1,0 +1,56 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:PixelVoxel.App.ViewModels"
+             x:Class="PixelVoxel.App.Views.ActivityRail"
+             x:DataType="vm:MainWindowViewModel">
+  <Border Classes="rail" BorderThickness="0,0,1,0">
+    <Grid RowDefinitions="Auto,*,Auto">
+      <Border Width="40" Height="32" Margin="12,10,12,14"
+              CornerRadius="8" Background="{StaticResource AccentBrush}">
+        <TextBlock HorizontalAlignment="Center" VerticalAlignment="Center"
+                   FontWeight="Bold" Text="PV" />
+      </Border>
+      <StackPanel Grid.Row="1" Spacing="6">
+        <ToggleButton Classes="rail-item" Tag="Import" Click="Workspace_Click"
+                      IsChecked="{Binding IsImportWorkspace, Mode=OneWay}"
+                      ToolTip.Tip="Import workspace">
+          <StackPanel Spacing="2">
+            <PathIcon Width="18" Height="18" Data="M3,4 L9,4 L9,10 L15,10 L15,16 L3,16 Z M10,4 L15,4 L15,9 L10,9 Z" />
+            <TextBlock FontSize="10" HorizontalAlignment="Center" Text="Import" />
+          </StackPanel>
+        </ToggleButton>
+        <ToggleButton Classes="rail-item" Tag="Edit" Click="Workspace_Click"
+                      IsChecked="{Binding IsEditWorkspace, Mode=OneWay}"
+                      ToolTip.Tip="Edit workspace">
+          <StackPanel Spacing="2">
+            <PathIcon Width="18" Height="18" Data="M4,14 L5,10 L12,3 L16,7 L9,14 Z M3,16 L9,15 L5,11 Z" />
+            <TextBlock FontSize="10" HorizontalAlignment="Center" Text="Edit" />
+          </StackPanel>
+        </ToggleButton>
+        <ToggleButton Classes="rail-item" Tag="Animate" Click="Workspace_Click"
+                      IsChecked="{Binding IsAnimateWorkspace, Mode=OneWay}"
+                      ToolTip.Tip="Animate workspace">
+          <StackPanel Spacing="2">
+            <PathIcon Width="18" Height="18" Data="M9,3 A6,6 0 1 1 4.5,5 L3,3 L3,8 L8,8 L6,6 A4,4 0 1 0 9,5 Z" />
+            <TextBlock FontSize="10" HorizontalAlignment="Center" Text="Animate" />
+          </StackPanel>
+        </ToggleButton>
+        <ToggleButton Classes="rail-item" Tag="Export" Click="Workspace_Click"
+                      IsChecked="{Binding IsExportWorkspace, Mode=OneWay}"
+                      ToolTip.Tip="Export workspace">
+          <StackPanel Spacing="2">
+            <PathIcon Width="18" Height="18" Data="M8,3 L12,7 L10,7 L10,12 L6,12 L6,7 L4,7 Z M3,13 L5,13 L5,15 L11,15 L11,13 L13,13 L13,17 L3,17 Z" />
+            <TextBlock FontSize="10" HorizontalAlignment="Center" Text="Export" />
+          </StackPanel>
+        </ToggleButton>
+      </StackPanel>
+      <Button Grid.Row="2" Margin="6,8" Padding="4"
+              Click="ToggleContextPanel_Click" ToolTip.Tip="Toggle context panel">
+        <StackPanel Spacing="1">
+          <TextBlock FontSize="16" HorizontalAlignment="Center" Text="◫" />
+          <TextBlock FontSize="9" HorizontalAlignment="Center" Text="Panel" />
+        </StackPanel>
+      </Button>
+    </Grid>
+  </Border>
+</UserControl>

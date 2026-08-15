@@ -2,6 +2,6 @@
   <ItemGroup>
     <ProjectReference Include="..\PixelVoxel.Core\PixelVoxel.Core.csproj" />
     <ProjectReference Include="..\PixelVoxel.Imaging\PixelVoxel.Imaging.csproj" />
+    <ProjectReference Include="..\PixelVoxel.Rendering\PixelVoxel.Rendering.csproj" />
   </ItemGroup>
 </Project>
-

@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Platform.Storage;
@@ -23,10 +24,16 @@ public sealed partial class MainWindow : Window
     {
         Patterns = ["*.pxv"],
     };
+    private static readonly FilePickerFileType GifFileType = new("GIF animation")
+    {
+        Patterns = ["*.gif"],
+        MimeTypes = ["image/gif"],
+    };
 
     private readonly DispatcherTimer _animationTimer;
     private readonly Stopwatch _animationClock = Stopwatch.StartNew();
     private Point? _lastPointerPosition;
+    private Point? _gizmoDragOrigin;
     private bool _isEditingStroke;
     private ViewportDragMode _dragMode;
     private RotationGizmoAxis _gizmoAxis;
@@ -43,6 +50,13 @@ public sealed partial class MainWindow : Window
         _animationTimer.Start();
         Closing += OnClosing;
         Closed += OnClosed;
+        SizeChanged += OnWindowSizeChanged;
+    }
+
+    private void OnWindowSizeChanged(object? sender, SizeChangedEventArgs e)
+    {
+        if (DataContext is MainWindowViewModel viewModel)
+            viewModel.ResponsiveWindowWidth = e.NewSize.Width;
     }
 
     private async void NewProject_Click(object? sender, RoutedEventArgs e)
@@ -231,6 +245,8 @@ public sealed partial class MainWindow : Window
             return;
         }
 
+        if (DataContext is MainWindowViewModel viewModel)
+            viewModel.SelectedImportFaceSlot = slot;
         DataTransfer transfer = new();
         transfer.Add(DataTransferItem.Create(ImportFaceDragFormat, slot.TargetFace.ToString()));
         await DragDrop.DoDragDropAsync(e, transfer, DragDropEffects.Move);
@@ -265,6 +281,98 @@ public sealed partial class MainWindow : Window
             DataContext is MainWindowViewModel viewModel)
         {
             viewModel.SelectedEditTool = tool;
+            if (sender is ToggleButton toggle) toggle.IsChecked = true;
+        }
+    }
+
+    private void ToggleLeftPanel_Click(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is MainWindowViewModel viewModel) viewModel.LeftPanelVisible = !viewModel.LeftPanelVisible;
+    }
+
+    private void ToggleRightPanel_Click(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is MainWindowViewModel viewModel) viewModel.RightPanelVisible = !viewModel.RightPanelVisible;
+    }
+
+    private void SelectImportStep_Click(object? sender, RoutedEventArgs e)
+    {
+        if (sender is Control { Tag: string stepName } &&
+            Enum.TryParse(stepName, out ImportWorkflowStep step) &&
+            DataContext is MainWindowViewModel viewModel)
+        {
+            viewModel.ActiveImportStep = step;
+        }
+    }
+
+    private void PreviousImportStep_Click(object? sender, RoutedEventArgs e) =>
+        (DataContext as MainWindowViewModel)?.MoveToPreviousImportStep();
+
+    private void NextImportStep_Click(object? sender, RoutedEventArgs e) =>
+        (DataContext as MainWindowViewModel)?.MoveToNextImportStep();
+
+    private void SelectExportMode_Click(object? sender, RoutedEventArgs e)
+    {
+        if (sender is Control { Tag: string modeName } &&
+            Enum.TryParse(modeName, out ExportWorkflowMode mode) &&
+            DataContext is MainWindowViewModel viewModel)
+        {
+            viewModel.SelectedExportMode = mode;
+        }
+    }
+
+    private void PrimaryExport_Click(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is not MainWindowViewModel viewModel) return;
+        switch (viewModel.SelectedExportMode)
+        {
+            case ExportWorkflowMode.CurrentView: ExportCurrentView_Click(sender, e); break;
+            case ExportWorkflowMode.DirectionSheet: ExportDirectionSheet_Click(sender, e); break;
+            case ExportWorkflowMode.AnimatedGif: ExportAnimatedGif_Click(sender, e); break;
+            case ExportWorkflowMode.AnimationSheet: ExportAnimationSheet_Click(sender, e); break;
+            case ExportWorkflowMode.UnityObj: ExportUnityObjPackage_Click(sender, e); break;
+        }
+    }
+
+    private void AddPaletteColor_Click(object? sender, RoutedEventArgs e) =>
+        (DataContext as MainWindowViewModel)?.AddCurrentColorToPalette();
+
+    private void SelectPaletteColor_Click(object? sender, RoutedEventArgs e)
+    {
+        if (sender is Control { DataContext: Avalonia.Media.Color color } && DataContext is MainWindowViewModel viewModel)
+            viewModel.SelectPaletteColor(color);
+    }
+
+    private void RemovePaletteColor_Click(object? sender, RoutedEventArgs e)
+    {
+        if (sender is Control { Tag: Avalonia.Media.Color color } && DataContext is MainWindowViewModel viewModel)
+            viewModel.RemovePaletteColor(color);
+    }
+
+    private async void ExportAnimatedGif_Click(object? sender, RoutedEventArgs e)
+    {
+        string? path = await PickSavePathAsync("Export animated GIF", "pixel-voxel-rotation.gif", "gif", GifFileType);
+        if (path is not null && DataContext is MainWindowViewModel viewModel) await viewModel.ExportAnimatedGifAsync(path);
+    }
+
+    private async void ExportAnimationSheet_Click(object? sender, RoutedEventArgs e)
+    {
+        string? path = await PickPngSavePathAsync("Export rotation sheet and Aseprite JSON", "pixel-voxel-rotation.png");
+        if (path is not null && DataContext is MainWindowViewModel viewModel) await viewModel.ExportAnimationSheetAsync(path);
+    }
+
+    private async void ExportUnityObjPackage_Click(object? sender, RoutedEventArgs e)
+    {
+        IReadOnlyList<IStorageFolder> folders = await StorageProvider.OpenFolderPickerAsync(new FolderPickerOpenOptions
+        {
+            Title = "Choose Unity OBJ package folder",
+            AllowMultiple = false,
+        });
+        string? directory = folders.FirstOrDefault()?.TryGetLocalPath();
+        if (directory is not null && DataContext is MainWindowViewModel viewModel)
+        {
+            string baseName = viewModel.ProjectPath is null ? "pixel-voxel-model" : Path.GetFileNameWithoutExtension(viewModel.ProjectPath);
+            await viewModel.ExportUnityObjPackageAsync(directory, baseName);
         }
     }
 
@@ -353,6 +461,11 @@ public sealed partial class MainWindow : Window
         RotationGizmo.Refresh();
     }
 
+    private void ToggleAnimationPreview_Click(object? sender, RoutedEventArgs e)
+    {
+        (DataContext as MainWindowViewModel)?.ToggleAnimationPreview();
+    }
+
     private void FitZoom_Click(object? sender, RoutedEventArgs e)
     {
         if (DataContext is MainWindowViewModel viewModel)
@@ -396,6 +509,7 @@ public sealed partial class MainWindow : Window
                 if (axis != RotationGizmoAxis.None)
                 {
                     _lastPointerPosition = point.Position;
+                    _gizmoDragOrigin = point.Position;
                     _dragMode = ViewportDragMode.Gizmo;
                     _gizmoAxis = axis;
                     _gizmoStartRotation = viewModel.CurrentModelRotation;
@@ -452,6 +566,7 @@ public sealed partial class MainWindow : Window
                 if (viewModel.IsViewMode)
                 {
                     viewModel.ClearEditorHover();
+                    RotationGizmo.SetHover(RotationGizmo.HitTestRing(e.GetPosition(RotationGizmo)));
                 }
                 else
                 {
@@ -483,10 +598,18 @@ public sealed partial class MainWindow : Window
         }
         else if (_dragMode == ViewportDragMode.Gizmo)
         {
-            float degrees = (float)delta.X * 0.7f;
+            float degrees = GizmoDragMotion.GetDegrees(delta.X, delta.Y);
             _gizmoDragDegrees += degrees;
-            viewModel.RotateObject(_gizmoAxis, degrees);
-            RotationGizmo.SetDrag(_gizmoAxis, _gizmoDragDegrees);
+            if (_gizmoStartRotation is not null && degrees != 0f)
+            {
+                viewModel.SetObjectRotationFromDrag(
+                    _gizmoStartRotation,
+                    _gizmoAxis,
+                    _gizmoDragDegrees);
+                RotationGizmo.SetDrag(_gizmoAxis, _gizmoDragDegrees);
+                RotationGizmo.Refresh();
+            }
+            RecenterGizmoPointer();
         }
         else
         {
@@ -501,6 +624,7 @@ public sealed partial class MainWindow : Window
         if (!_isEditingStroke && _lastPointerPosition is null)
         {
             (DataContext as MainWindowViewModel)?.ClearEditorHover();
+            RotationGizmo.SetHover(RotationGizmoAxis.None);
         }
     }
 
@@ -567,21 +691,34 @@ public sealed partial class MainWindow : Window
         TimeSpan current = _animationClock.Elapsed;
         double elapsedSeconds = (current - _lastAnimationTime).TotalSeconds;
         _lastAnimationTime = current;
-        if (_dragMode == ViewportDragMode.Orbit && DataContext is MainWindowViewModel viewModel)
+        if (DataContext is MainWindowViewModel viewModel)
         {
             viewModel.AdvanceAnimations(elapsedSeconds);
             if (viewModel.IsAnimationActive) RotationGizmo.Refresh();
         }
     }
 
+    private void RecenterGizmoPointer()
+    {
+        if (!OperatingSystem.IsWindows() || !_gizmoDragOrigin.HasValue) return;
+        PixelPoint screenOrigin = ViewportHost.PointToScreen(_gizmoDragOrigin.Value);
+        _lastPointerPosition = _gizmoDragOrigin.Value;
+        SetCursorPosition(screenOrigin.X, screenOrigin.Y);
+    }
+
+    [System.Runtime.InteropServices.DllImport("user32.dll", EntryPoint = "SetCursorPos")]
+    [return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]
+    private static extern bool SetCursorPosition(int x, int y);
+
     private void ReleasePointer(IPointer pointer)
     {
-        if (DataContext is MainWindowViewModel viewModel)
+        if (_dragMode == ViewportDragMode.Orbit && DataContext is MainWindowViewModel viewModel)
         {
             viewModel.CommitCameraSnap();
         }
 
         _lastPointerPosition = null;
+        _gizmoDragOrigin = null;
         _dragMode = ViewportDragMode.None;
         _gizmoAxis = RotationGizmoAxis.None;
         _gizmoStartRotation = null;
@@ -624,12 +761,32 @@ public sealed partial class MainWindow : Window
             viewModel.DeleteSelection();
             e.Handled = true;
         }
+        else if (e.Key == Key.I)
+        {
+            viewModel.SelectedEditTool = VoxelEditTool.Eyedropper;
+            e.Handled = true;
+        }
+        else if (!control && e.Key is >= Key.D1 and <= Key.D6)
+        {
+            viewModel.ActiveWorkspace = WorkspaceMode.Edit;
+            viewModel.SelectedEditTool = e.Key switch
+            {
+                Key.D1 => VoxelEditTool.View,
+                Key.D2 => VoxelEditTool.Add,
+                Key.D3 => VoxelEditTool.Erase,
+                Key.D4 => VoxelEditTool.Paint,
+                Key.D5 => VoxelEditTool.Eyedropper,
+                _ => VoxelEditTool.Select,
+            };
+            e.Handled = true;
+        }
         else if (e.Key == Key.Escape)
         {
             if (_dragMode == ViewportDragMode.Gizmo && _gizmoStartRotation is not null)
             {
                 viewModel.RestoreObjectRotation(_gizmoStartRotation);
                 _lastPointerPosition = null;
+                _gizmoDragOrigin = null;
                 _dragMode = ViewportDragMode.None;
                 _gizmoAxis = RotationGizmoAxis.None;
                 _gizmoStartRotation = null;
@@ -810,14 +967,17 @@ public sealed partial class MainWindow : Window
     }
 
     private async Task<string?> PickPngSavePathAsync(string title, string suggestedName)
+        => await PickSavePathAsync(title, suggestedName, "png", PngFileType);
+
+    private async Task<string?> PickSavePathAsync(string title, string suggestedName, string extension, FilePickerFileType fileType)
     {
         IStorageFile? file = await StorageProvider.SaveFilePickerAsync(
             new FilePickerSaveOptions
             {
                 Title = title,
                 SuggestedFileName = suggestedName,
-                DefaultExtension = "png",
-                FileTypeChoices = [PngFileType],
+                DefaultExtension = extension,
+                FileTypeChoices = [fileType],
                 ShowOverwritePrompt = true,
             });
         string? path = file?.TryGetLocalPath();

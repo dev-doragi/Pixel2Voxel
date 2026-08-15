@@ -1,5 +1,19 @@
 # File Format
 
+## Pixel Voxel project v2 additions
+
+Version 2 adds an optional project-owned `palette` array to `manifest.json`. It contains at most 32 opaque RGBA colors and does not change `document.bin` voxel semantics. The loader remains backward-compatible with version 1 projects, which open with an empty palette. Unknown future versions remain rejected.
+
+## Animation exports
+
+Rotation animation sheets use one fixed logical canvas and pivot. Frames are written left-to-right to PNG, while Aseprite JSON records each frame rectangle, its duration in milliseconds, the shared pivot slice, and a `rotation` frame tag. GIF exports use the same sampled frames, loop indefinitely, and use GIF palette quantization only when more than 256 colors are present.
+
+GIF output can apply an Aseprite-style 25% to 1000% nearest-neighbor resize without changing the Aseprite sheet's logical frame size. For example, a 32x32 logical frame exports at 32x32 at 100% and 320x320 at 1000%. Rotation GIFs and animation sheets snapshot the current editor camera mode, preset, yaw, and pitch at export time. Pan is reset to zero and zoom to 1 so every frame remains centered on the fixed logical canvas. Rotation frames start at the captured model yaw, pitch, and roll; selected axes complete one loop without a duplicate 360-degree terminal frame.
+
+## Unity OBJ package
+
+Unity packages contain `.obj`, `.mtl`, `_palette.png`, `.pixelvoxel.json`, and `Editor/PixelVoxelAssetPostprocessor.cs`. Only exposed voxel faces are emitted. Palette UVs address texel centers, and the generated Unity postprocessor applies Point filtering, disables mipmaps and compression, and clamps the palette texture.
+
 ## Pixel Voxel 프로젝트 v1
 
 프로젝트 확장자는 `.pxv`이며 하나의 ZIP 컨테이너로 저장한다. 저장은 같은 디렉터리의 임시 파일에 모두 기록한 뒤 성공 시 최종 파일로 교체한다.

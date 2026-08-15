@@ -12,7 +12,7 @@ public sealed class ViewportSettingsStoreTests : IDisposable
         $"PixelVoxel.App.Tests-{Guid.NewGuid():N}");
 
     [Fact]
-    public void SavesAndReloadsVersionTwoSettings()
+    public void SavesAndReloadsVersionFourSettings()
     {
         string path = GetSettingsPath();
         ViewportUserSettings expected = new()
@@ -20,9 +20,14 @@ public sealed class ViewportSettingsStoreTests : IDisposable
             DefaultYaw = 15f,
             DefaultPitch = -20f,
             CameraFaceSnapEnabled = false,
+            CameraFaceSnapAngle = 18f,
             ZoomIsFit = false,
             ManualZoomScale = 7,
             AnimationSpeed = 45f,
+            AnimationFramesPerSecond = 24,
+            GifExportResizePercent = 600,
+            LeftPanelWidth = 420,
+            RightPanelVisible = false,
             LightingEnabled = false,
             OutlineMode = VoxelOutlineMode.SilhouetteAndDepth,
             OutlineColor = "#112233",
@@ -78,7 +83,7 @@ public sealed class ViewportSettingsStoreTests : IDisposable
     }
 
     [Fact]
-    public void VersionOneSettingsUpgradeWithVersionTwoDefaults()
+    public void VersionOneSettingsUpgradeWithVersionFourDefaults()
     {
         string path = GetSettingsPath();
         Directory.CreateDirectory(_directory);
@@ -87,11 +92,31 @@ public sealed class ViewportSettingsStoreTests : IDisposable
 
         (ViewportUserSettings settings, string? diagnostic) = store.Load();
 
-        Assert.Equal(2, settings.Version);
+        Assert.Equal(4, settings.Version);
         Assert.Equal(25f, settings.DefaultYaw);
         Assert.Equal(8, settings.ExportDirectionCount);
         Assert.True(settings.ExportTransparentBackground);
         Assert.Empty(settings.RecentImports);
+        Assert.Equal(360, settings.LeftPanelWidth);
+        Assert.Equal(12, settings.AnimationFramesPerSecond);
+        Assert.Equal(400, settings.GifExportResizePercent);
+        Assert.Equal(10f, settings.CameraFaceSnapAngle);
+        Assert.Contains("upgraded", diagnostic);
+    }
+
+    [Fact]
+    public void VersionThreeIntegerGifScaleMigratesToResizePercent()
+    {
+        string path = GetSettingsPath();
+        Directory.CreateDirectory(_directory);
+        File.WriteAllText(path, "{\"Version\":3,\"GifExportScale\":8}");
+        using ViewportSettingsStore store = new(path);
+
+        (ViewportUserSettings settings, string? diagnostic) = store.Load();
+
+        Assert.Equal(4, settings.Version);
+        Assert.Equal(800, settings.GifExportResizePercent);
+        Assert.Equal(0, settings.GifExportScale);
         Assert.Contains("upgraded", diagnostic);
     }
 

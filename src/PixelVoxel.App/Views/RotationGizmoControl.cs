@@ -9,14 +9,16 @@ namespace PixelVoxel.App.Views;
 
 public sealed class RotationGizmoControl : Control
 {
-    private const double OuterRadius = 72d;
-    private const double AxisRadius = 54d;
+    private const double OuterRadius = 48d;
+    private const double AxisRadius = 34d;
     private static readonly IBrush XBrush = Brushes.Red;
     private static readonly IBrush YBrush = Brushes.LimeGreen;
     private static readonly IBrush ZBrush = Brushes.DodgerBlue;
 
     public RotationGizmoAxis ActiveAxis { get; private set; }
+    public RotationGizmoAxis HoverAxis { get; private set; }
     public float DragDegrees { get; private set; }
+    private IReadOnlyList<Point>? _dragRingPoints;
 
     public override void Render(DrawingContext context)
     {
@@ -47,19 +49,25 @@ public sealed class RotationGizmoControl : Control
         if (DataContext is not MainWindowViewModel { HasDocument: true } viewModel) return RotationGizmoAxis.None;
         Point center = new(Bounds.Width / 2d, Bounds.Height / 2d);
         double outerDistance = Distance(point, center);
-        if (Math.Abs(outerDistance - OuterRadius) <= 7d) return RotationGizmoAxis.View;
-
+        List<(RotationGizmoAxis Axis, double Distance)> candidates =
+            [(RotationGizmoAxis.View, Math.Abs(outerDistance - OuterRadius))];
         foreach (RotationGizmoAxis axis in new[] { RotationGizmoAxis.LocalX, RotationGizmoAxis.LocalY, RotationGizmoAxis.LocalZ })
         {
             IReadOnlyList<Point> samples = GetRingPoints(center, viewModel.CurrentRenderTransform, axis);
-            if (DistanceToPolyline(point, samples) <= 7d) return axis;
+            candidates.Add((axis, DistanceToPolyline(point, samples)));
         }
-
-        return RotationGizmoAxis.None;
+        (RotationGizmoAxis selectedAxis, double distance) = candidates.MinBy(candidate => candidate.Distance);
+        return distance <= 7d ? selectedAxis : RotationGizmoAxis.None;
     }
 
     public void SetDrag(RotationGizmoAxis axis, float degrees)
     {
+        if (ActiveAxis == RotationGizmoAxis.None && axis != RotationGizmoAxis.None &&
+            DataContext is MainWindowViewModel viewModel)
+        {
+            Point center = new(Bounds.Width / 2d, Bounds.Height / 2d);
+            _dragRingPoints = GetRingPoints(center, viewModel.CurrentRenderTransform, axis);
+        }
         ActiveAxis = axis;
         DragDegrees = degrees;
         InvalidateVisual();
@@ -69,7 +77,42 @@ public sealed class RotationGizmoControl : Control
     {
         ActiveAxis = RotationGizmoAxis.None;
         DragDegrees = 0f;
+        _dragRingPoints = null;
         InvalidateVisual();
+    }
+
+    public void SetHover(RotationGizmoAxis axis)
+    {
+        if (HoverAxis == axis) return;
+        HoverAxis = axis;
+        InvalidateVisual();
+    }
+
+    public float GetDragDegrees(RotationGizmoAxis axis, Point previous, Point current)
+    {
+        Point center = new(Bounds.Width / 2d, Bounds.Height / 2d);
+        if (axis == RotationGizmoAxis.View)
+        {
+            double first = Math.Atan2(previous.Y - center.Y, previous.X - center.X);
+            double second = Math.Atan2(current.Y - center.Y, current.X - center.X);
+            double delta = (second - first) * 180d / Math.PI;
+            if (delta > 180d) delta -= 360d;
+            if (delta < -180d) delta += 360d;
+            // Screen coordinates grow downward, so invert the geometric pointer angle
+            // to match the visible positive rotation direction of the gizmo ring.
+            return (float)-delta;
+        }
+
+        if (DataContext is not MainWindowViewModel viewModel) return 0f;
+        IReadOnlyList<Point> samples = _dragRingPoints ??
+            GetRingPoints(center, viewModel.CurrentRenderTransform, axis);
+        int segmentIndex = ClosestSegment(previous, samples);
+        Avalonia.Vector tangent = samples[segmentIndex + 1] - samples[segmentIndex];
+        double length = Math.Sqrt((tangent.X * tangent.X) + (tangent.Y * tangent.Y));
+        if (length < 0.001d) return 0f;
+        Avalonia.Vector movement = current - previous;
+        double alongRing = ((movement.X * tangent.X) + (movement.Y * tangent.Y)) / length;
+        return (float)(-alongRing * 180d / (Math.PI * AxisRadius));
     }
 
     public void Refresh() => InvalidateVisual();
@@ -87,7 +130,7 @@ public sealed class RotationGizmoControl : Control
     }
 
     private Pen PenFor(RotationGizmoAxis axis, IBrush brush) =>
-        new(brush, ActiveAxis == axis ? 4d : 2d);
+        new(brush, ActiveAxis == axis ? 4d : HoverAxis == axis ? 3.25d : 2d);
 
     private static IReadOnlyList<Point> GetRingPoints(
         Point center,
@@ -130,6 +173,21 @@ public sealed class RotationGizmoControl : Control
         return closest;
     }
 
+    private static int ClosestSegment(Point point, IReadOnlyList<Point> samples)
+    {
+        int closestIndex = 0;
+        double closestDistance = double.PositiveInfinity;
+        for (int index = 0; index < samples.Count - 1; index++)
+        {
+            Point midpoint = new((samples[index].X + samples[index + 1].X) / 2d, (samples[index].Y + samples[index + 1].Y) / 2d);
+            double distance = Distance(point, midpoint);
+            if (distance >= closestDistance) continue;
+            closestDistance = distance;
+            closestIndex = index;
+        }
+        return closestIndex;
+    }
+
     private static double Distance(Point first, Point second)
     {
         Avalonia.Vector delta = first - second;
@@ -138,10 +196,10 @@ public sealed class RotationGizmoControl : Control
 
     private static string AxisName(RotationGizmoAxis axis) => axis switch
     {
-        RotationGizmoAxis.LocalX => "Local X",
-        RotationGizmoAxis.LocalY => "Local Y",
-        RotationGizmoAxis.LocalZ => "Local Z",
-        RotationGizmoAxis.View => "View Roll",
+        RotationGizmoAxis.LocalX => "Pitch (X)",
+        RotationGizmoAxis.LocalY => "Yaw (Y)",
+        RotationGizmoAxis.LocalZ => "Roll (Z)",
+        RotationGizmoAxis.View => "Screen Roll",
         _ => string.Empty,
     };
 }

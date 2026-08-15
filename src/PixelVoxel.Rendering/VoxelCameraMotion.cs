@@ -1,3 +1,5 @@
+using System.Numerics;
+
 namespace PixelVoxel.Rendering;
 
 /// <summary>Contains deterministic orbit and animation math independent from UI input events.</summary>
@@ -66,6 +68,55 @@ public static class VoxelCameraMotion
         }
 
         return new VoxelCameraFaceSnap(yaw, pitch, false);
+    }
+
+    /// <summary>Snaps to one of the six original sheet-face normals after applying object rotation.</summary>
+    public static VoxelCameraFaceSnap SnapToSheetFace(
+        float yawDegrees,
+        float pitchDegrees,
+        Quaternion modelOrientation,
+        float thresholdDegrees = DefaultFaceSnapThresholdDegrees)
+    {
+        if (!float.IsFinite(yawDegrees) || !float.IsFinite(pitchDegrees))
+        {
+            throw new ArgumentOutOfRangeException(nameof(yawDegrees));
+        }
+
+        ValidateThreshold(thresholdDegrees);
+        Quaternion model = VoxelOrientation.Normalize(modelOrientation);
+        Quaternion camera = VoxelOrientation.FromYawPitchRoll(yawDegrees, pitchDegrees, 0f);
+        Vector3 currentNormal = Vector3.Normalize(Vector3.Transform(Vector3.UnitZ, Quaternion.Inverse(camera)));
+        Vector3[] sheetNormals =
+        [
+            Vector3.UnitZ, Vector3.UnitX, -Vector3.UnitZ,
+            -Vector3.UnitX, Vector3.UnitY, -Vector3.UnitY,
+        ];
+
+        Vector3 nearest = default;
+        float nearestDot = -1f;
+        foreach (Vector3 sheetNormal in sheetNormals)
+        {
+            Vector3 rotated = Vector3.Normalize(Vector3.Transform(sheetNormal, model));
+            float dot = Vector3.Dot(currentNormal, rotated);
+            if (dot > nearestDot)
+            {
+                nearestDot = dot;
+                nearest = rotated;
+            }
+        }
+
+        float angularDistance = MathF.Acos(Math.Clamp(nearestDot, -1f, 1f)) * (180f / MathF.PI);
+        if (angularDistance > thresholdDegrees)
+        {
+            return new VoxelCameraFaceSnap(WrapAngle(yawDegrees), Math.Clamp(pitchDegrees, -90f, 90f), false);
+        }
+
+        float horizontalLength = MathF.Sqrt((nearest.X * nearest.X) + (nearest.Z * nearest.Z));
+        float yaw = horizontalLength < 0.00001f
+            ? WrapAngle(Snap(yawDegrees, 90f))
+            : WrapAngle(MathF.Atan2(-nearest.X, nearest.Z) * (180f / MathF.PI));
+        float pitch = MathF.Atan2(-nearest.Y, horizontalLength) * (180f / MathF.PI);
+        return new VoxelCameraFaceSnap(yaw, pitch, true);
     }
 
     private static float AngularDistance(float first, float second) =>

@@ -1,5 +1,13 @@
 # Product Requirements
 
+## Convenience workflow additions
+
+- Resizable, independently hideable import and inspector docks with persisted layout state.
+- Searchable inspector categories for editing, camera, animation, rendering, and export.
+- Project-owned 32-color palette and exact pre-lighting voxel-face eyedropper.
+- Rotation capture to looping GIF or Aseprite-compatible PNG sheet plus JSON.
+- Unity-oriented OBJ/MTL/palette package with a scoped pixel-texture AssetPostprocessor.
+
 ## 목적
 
 Pixel Voxel은 직교 PNG 이미지의 Front, Side, Top 뷰를 입력으로 받아 편집 가능한 3D 픽셀 모델을 만들고 여러 방향의 PNG 스프라이트로 출력하는 독립 데스크톱 프로그램을 목표로 한다.

@@ -31,6 +31,7 @@ public sealed class PxvProjectSerializerTests : IDisposable
         Assert.NotNull(loaded.SourceViews);
         Assert.Equal(new Rgba32Color(1, 2, 3, 255), loaded.SourceViews![VoxelFace.Front].GetPixel(0, 0));
         Assert.Equal(source.Settings, loaded.Settings);
+        Assert.Equal(source.Palette, loaded.Palette);
     }
 
     [Fact]
@@ -78,6 +79,37 @@ public sealed class PxvProjectSerializerTests : IDisposable
 
         await Assert.ThrowsAsync<InvalidDataException>(() =>
             CreateSerializer().LoadAsync(path, TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task VersionOneProjectLoadsWithEmptyPalette()
+    {
+        Directory.CreateDirectory(_directory);
+        string path = Path.Combine(_directory, "legacy.pxv");
+        await CreateSerializer().SaveAsync(path, CreateProject(), TestContext.Current.CancellationToken);
+        using (ZipArchive archive = ZipFile.Open(path, ZipArchiveMode.Update))
+        {
+            ZipArchiveEntry documentEntry = archive.GetEntry("document.bin")!;
+            byte[] document;
+            using (Stream input = documentEntry.Open())
+            using (MemoryStream buffer = new()) { input.CopyTo(buffer); document = buffer.ToArray(); }
+            BitConverter.GetBytes(1).CopyTo(document, 4);
+            documentEntry.Delete();
+            using (Stream output = archive.CreateEntry("document.bin").Open()) output.Write(document);
+
+            ZipArchiveEntry manifestEntry = archive.GetEntry("manifest.json")!;
+            manifestEntry.Delete();
+            await using Stream manifest = archive.CreateEntry("manifest.json").Open();
+            await JsonSerializer.SerializeAsync(manifest, new
+            {
+                format = "PixelVoxel", version = 1, coordinateSystem = "XYZ-RightUpFront-v1",
+                width = 2, height = 1, depth = 1, views = new[] { "front" }, settings = CreateProject().Settings,
+            }, cancellationToken: TestContext.Current.CancellationToken);
+        }
+
+        PixelVoxelProject loaded = await CreateSerializer().LoadAsync(path, TestContext.Current.CancellationToken);
+        Assert.Empty(loaded.Palette);
+        Assert.Equal(1, loaded.Document.Storage.OccupiedCount);
     }
 
     [Fact]
@@ -132,6 +164,7 @@ public sealed class PxvProjectSerializerTests : IDisposable
             false,
             true,
             17f);
-        return new PixelVoxelProject(document, views, settings);
+        return new PixelVoxelProject(document, views, settings,
+            [new Rgba32Color(12, 34, 56, 255), new Rgba32Color(78, 90, 12, 255)]);
     }
 }

@@ -6,10 +6,10 @@ using PixelVoxel.Imaging;
 
 namespace PixelVoxel.Export;
 
-/// <summary>Reads and writes version 1 portable .pxv ZIP containers.</summary>
+/// <summary>Reads v1/v2 and writes version 2 portable .pxv ZIP containers.</summary>
 public sealed class PxvProjectSerializer : IProjectSerializer
 {
-    private const int FormatVersion = 1;
+    private const int FormatVersion = 2;
     private const long MaximumCandidateCells = 1_048_576;
     private static readonly byte[] DocumentMagic = "PXVD"u8.ToArray();
     private static readonly DateTimeOffset StableEntryTime = new(1980, 1, 1, 0, 0, 0, TimeSpan.Zero);
@@ -69,7 +69,8 @@ public sealed class PxvProjectSerializer : IProjectSerializer
                     dimensions.Height,
                     dimensions.Depth,
                     views.Select(FaceName).ToArray(),
-                    project.Settings);
+                    project.Settings,
+                    project.Palette);
                 await WriteJsonEntryAsync(archive, "manifest.json", manifest, cancellationToken);
                 WriteDocumentEntry(archive, project.Document, cancellationToken);
                 if (project.SourceViews is not null)
@@ -115,7 +116,7 @@ public sealed class PxvProjectSerializer : IProjectSerializer
             FileOptions.Asynchronous | FileOptions.SequentialScan);
         using ZipArchive archive = new(stream, ZipArchiveMode.Read, leaveOpen: false);
         ProjectManifest manifest = await ReadManifestAsync(archive, cancellationToken);
-        if (manifest.Format != "PixelVoxel" || manifest.Version != FormatVersion)
+        if (manifest.Format != "PixelVoxel" || manifest.Version is not (1 or FormatVersion))
         {
             throw new InvalidDataException($"Unsupported Pixel Voxel project version {manifest.Version}.");
         }
@@ -127,7 +128,7 @@ public sealed class PxvProjectSerializer : IProjectSerializer
 
         VoxelDimensions dimensions = new(manifest.Width, manifest.Height, manifest.Depth);
         ValidateDimensions(dimensions);
-        VoxelDocument document = ReadDocumentEntry(archive, dimensions, cancellationToken);
+        VoxelDocument document = ReadDocumentEntry(archive, dimensions, manifest.Version, cancellationToken);
         Dictionary<VoxelFace, OrthographicImage> views = [];
         foreach (string faceName in manifest.Views)
         {
@@ -145,7 +146,13 @@ public sealed class PxvProjectSerializer : IProjectSerializer
         }
 
         OrthographicViewSet? sourceViews = views.Count == 0 ? null : new OrthographicViewSet(views);
-        return new PixelVoxelProject(document, sourceViews, manifest.Settings);
+        Rgba32Color[] palette = manifest.Palette?.ToArray() ?? [];
+        if (palette.Length > 32 || palette.Any(color => color.Alpha != byte.MaxValue))
+        {
+            throw new InvalidDataException("Project palette must contain at most 32 opaque colors.");
+        }
+
+        return new PixelVoxelProject(document, sourceViews, manifest.Settings, palette);
     }
 
     private static string ValidatePath(string path)
@@ -235,6 +242,7 @@ public sealed class PxvProjectSerializer : IProjectSerializer
     private static VoxelDocument ReadDocumentEntry(
         ZipArchive archive,
         VoxelDimensions dimensions,
+        int expectedVersion,
         CancellationToken cancellationToken)
     {
         ZipArchiveEntry entry = archive.GetEntry("document.bin") ??
@@ -247,7 +255,10 @@ public sealed class PxvProjectSerializer : IProjectSerializer
         }
 
         int version = reader.ReadInt32();
-        if (version != FormatVersion) throw new InvalidDataException($"Unsupported voxel data version {version}.");
+        if (version != expectedVersion || version is not (1 or FormatVersion))
+        {
+            throw new InvalidDataException($"Unsupported voxel data version {version}.");
+        }
         int count = reader.ReadInt32();
         long volume = checked((long)dimensions.Width * dimensions.Height * dimensions.Depth);
         if (count < 0 || count > volume) throw new InvalidDataException("Project occupied voxel count is invalid.");
@@ -277,7 +288,7 @@ public sealed class PxvProjectSerializer : IProjectSerializer
             cells.Add(new VoxelEntry(coordinate, new VoxelCell(colors)));
         }
 
-        if (stream.Position != stream.Length) throw new InvalidDataException("Project voxel data contains trailing bytes.");
+        if (stream.ReadByte() != -1) throw new InvalidDataException("Project voxel data contains trailing bytes.");
         return new VoxelDocument(dimensions, cells);
     }
 
@@ -321,5 +332,6 @@ public sealed class PxvProjectSerializer : IProjectSerializer
         int Height,
         int Depth,
         IReadOnlyList<string> Views,
-        PixelVoxelProjectSettings Settings);
+        PixelVoxelProjectSettings Settings,
+        IReadOnlyList<Rgba32Color>? Palette = null);
 }

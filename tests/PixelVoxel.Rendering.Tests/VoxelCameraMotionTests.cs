@@ -1,3 +1,5 @@
+using System.Numerics;
+
 namespace PixelVoxel.Rendering.Tests;
 
 public sealed class VoxelCameraMotionTests
@@ -112,6 +114,30 @@ public sealed class VoxelCameraMotionTests
         Assert.False(result.IsSnapped);
         Assert.Equal(yaw, result.YawDegrees);
         Assert.Equal(offset, result.PitchDegrees);
+    }
+
+    [Fact]
+    public void SheetFaceSnapFollowsTheRotatedOriginalFaceNormal()
+    {
+        Quaternion modelRotation = VoxelOrientation.FromYawPitchRoll(30f, 0f, 0f);
+
+        VoxelCameraFaceSnap result = VoxelCameraMotion.SnapToSheetFace(
+            -28f, 1f, modelRotation, 5f);
+
+        Assert.True(result.IsSnapped);
+        Assert.Equal(-30f, result.YawDegrees, 3);
+        Assert.Equal(0f, result.PitchDegrees, 3);
+    }
+
+    [Fact]
+    public void SheetFaceSnapDoesNotFallBackToAnUnrotatedWorldFace()
+    {
+        Quaternion modelRotation = VoxelOrientation.FromYawPitchRoll(30f, 0f, 0f);
+
+        VoxelCameraFaceSnap result = VoxelCameraMotion.SnapToSheetFace(
+            1f, 0f, modelRotation, 5f);
+
+        Assert.False(result.IsSnapped);
     }
 
 }
