@@ -1,50 +1,61 @@
-# Pixel2Voxel
+<h1 align="center">Pixel2Voxel</h1>
 
-<img width="315" height="315" alt="pixel-voxel-rotation" src="https://github.com/user-attachments/assets/3e083337-730b-4402-990e-5b5e2671ecb4" />
+<p align="center">
+  <img width="315" height="315" alt="Pixel2Voxel rotation preview" src="https://github.com/user-attachments/assets/3e083337-730b-4402-990e-5b5e2671ecb4" />
+</p>
 
-**Pixel2Voxel (P2V)** is a Windows-first desktop editor that reconstructs an editable voxel volume from six orthographic pixel-art views.
+<p align="center">
+  English · <a href="README.ko.md">한국어</a>
+</p>
 
-Front, Right, Back, Left, Top, Bottom 이미지를 교차 투영하여 3D 점유 격자를 만들고, 복셀 편집·카메라 조정·회전 애니메이션·스프라이트 및 OBJ 출력까지 한 작업 흐름에서 처리합니다.
+**Pixel2Voxel (P2V)** is a Windows desktop editor that reconstructs editable voxel models from six orthographic pixel-art views.
 
-## 다운로드
+Import Front, Right, Back, Left, Top, and Bottom images, reconstruct them into a voxel volume, edit the result, preview it from different angles, and export sprites or 3D assets in a single workflow.
 
-[최신 Windows 버전 다운로드](https://github.com/dev-doragi/IsometricPixel/releases/latest/download/Pixel2Voxel-win-x64.zip)
+## Download
 
-모든 버전과 변경 사항은 [GitHub Releases](https://github.com/dev-doragi/IsometricPixel/releases)에서 확인할 수 있습니다.
+[Download the latest Windows version](https://github.com/dev-doragi/Pixel2Voxel/releases/latest/download/Pixel2Voxel-win-x64.zip)
 
-## 핵심 기술
+All versions and release notes are available on [GitHub Releases](https://github.com/dev-doragi/Pixel2Voxel/releases).
 
-Pixel2Voxel은 AI 이미지 생성기가 아니라 **6방향 정사영 실루엣 기반 Visual Hull 복셀 재구성기**입니다.
+### Requirements
+
+- Windows 10 / 11
+- No separate .NET installation required
+
+Download `Pixel2Voxel-win-x64.zip`, extract it, and run `Pixel2Voxel.exe`.
+
+## How It Works
+
+Pixel2Voxel is not an AI image-to-3D generator. It reconstructs a voxel volume by intersecting the silhouettes of six orthographic views.
 
 ```text
-Front volume ∩ Right volume ∩ Back volume
-∩ Left volume ∩ Top volume ∩ Bottom volume
+Front ∩ Right ∩ Back
+∩ Left ∩ Top ∩ Bottom
 = reconstructed voxel volume
 ```
 
-각 후보 복셀을 여섯 입력 이미지에 투영하고, 모든 시점의 불투명 픽셀을 만족하는 셀만 남깁니다. 노출된 복셀 면에는 해당 원본 시트의 RGBA 색상을 보존합니다. 실루엣에 나타나지 않는 내부 공간이나 숨겨진 오목 구조는 복원할 수 없습니다.
+Each candidate voxel is projected onto the six input images. Voxels that satisfy the opaque regions of every input view are kept, while colors from the source images are preserved on exposed surfaces.
 
-## 주요 기능
+Because reconstruction is based on silhouettes, hidden cavities and concave structures that are not visible from the six input views cannot be recovered automatically.
 
-- `6×1` PNG 시트 또는 개별 6면 PNG Import
-- 고정 입력 순서: Front, Right, Back, Left, Top, Bottom
-- 면 교환, Horizontal/Vertical Flip, 정수 Offset과 입력 진단
-- 단계형 `Source → Map & Align → Validate → Reconstruct` 흐름
-- Add, Erase, Paint, Eyedropper, Box Select 복셀 편집
-- 편집 스트로크 단위 Undo/Redo와 볼륨 Resize
-- Pixel 2:1, True Isometric, Front, Right, Top, Free View 카메라
-- 회전된 원본 6면을 기준으로 하는 카메라 스냅
-- X/Y/Z 기즈모, 회전 미리보기, 속도 및 FPS 설정
-- Lighting, Outline, Background 조정
-- 현재 뷰 PNG, 4·8·16방향 시트와 Aseprite JSON 출력
-- 회전 GIF 및 애니메이션 PNG 시트 출력
-- Unity용 OBJ/MTL/팔레트 텍스처 패키지 출력
-- 휴대용 `.pxv` 프로젝트 저장·불러오기
-- OpenGL 뷰포트와 CPU fallback 렌더러
+## Workflow
 
-## 입력 시트
+```text
+Import Images
+      ↓
+Map & Align
+      ↓
+Validate
+      ↓
+Reconstruct
+      ↓
+Edit Voxels
+      ↓
+Preview & Export
+```
 
-모든 슬롯은 동일한 캔버스 크기여야 하며 알파는 완전 투명 `0` 또는 완전 불투명 `255`를 사용합니다.
+Pixel2Voxel supports both individual PNG images and a single `6×1` sprite sheet. The expected input order is:
 
 ```text
 ┌───────┬───────┬──────┬──────┬─────┬────────┐
@@ -52,38 +63,70 @@ Front volume ∩ Right volume ∩ Back volume
 └───────┴───────┴──────┴──────┴─────┴────────┘
 ```
 
-Import 후 각 면의 매핑과 정렬을 확인하고 Validation을 통과한 뒤 Reconstruct를 실행합니다.
+After importing, you can adjust view mapping, flips, and offsets before validating and reconstructing the voxel model.
 
-## 요구 환경
+## Features
 
-- Windows 10/11
-- 소스 빌드 시 .NET SDK 10
+### Reconstruction
 
-GitHub Release의 `Pixel2Voxel-win-x64.zip`은 self-contained 빌드이므로 별도 .NET 설치 없이 실행할 수 있습니다.
+- Six-view orthographic voxel reconstruction
+- Individual PNG or `6×1` sprite sheet import
+- Front / Right / Back / Left / Top / Bottom mapping
+- Horizontal and vertical flip
+- Integer image offsets
+- Input validation and diagnostics
 
-## 소스에서 실행
+### Voxel Editing
 
-처음 실행하거나 코드가 변경된 경우:
+- Add, erase, paint, eyedropper, and box select tools
+- Undo / Redo
+- Volume resize
 
-```powershell
-dotnet run --project src\PixelVoxel.App\PixelVoxel.App.csproj -c Debug
-```
+### Camera & Preview
 
-이미 Debug 빌드가 존재하는 경우:
+- Pixel 2:1, True Isometric, Front, Right, Top, and Free View cameras
+- Camera snapping based on source views
+- X / Y / Z rotation controls
+- Rotation preview with adjustable speed and FPS
+- Lighting, outline, and background settings
 
-```powershell
-dotnet run --project src\PixelVoxel.App\PixelVoxel.App.csproj -c Debug --no-build
-```
+### Export
 
-빌드된 실행 파일:
+- Current-view PNG
+- 4 / 8 / 16-direction sprite sheets
+- Animated PNG sprite sheets and rotation GIF
+- Aseprite JSON
+- OBJ / MTL / palette texture package for Unity
 
-```text
-src\PixelVoxel.App\bin\Debug\net10.0\Pixel2Voxel.exe
-```
+### Projects
 
-제품명은 Pixel2Voxel이지만 기존 코드와 프로젝트 호환성을 위해 소스 디렉터리 및 네임스페이스는 아직 `PixelVoxel.*`을 유지합니다.
+- Save and load portable `.pxv` project files
+- OpenGL viewport with a CPU fallback renderer
 
-## 빌드와 테스트
+## Input Guidelines
+
+- Use the same canvas size for all six views.
+- Use orthographic views.
+- Use fully transparent (`alpha = 0`) or fully opaque (`alpha = 255`) pixels.
+- Keep the object aligned consistently across all views.
+- Check mapping and alignment before reconstruction.
+
+Pixel2Voxel can compensate for small alignment differences using flips and integer offsets, but consistently aligned source images will produce better results.
+
+## Project Files
+
+Pixel2Voxel project files use the `.pxv` extension. For compatibility with earlier versions, some internal identifiers still use the `PixelVoxel` name:
+
+- Project extension: `.pxv`
+- Manifest format: `PixelVoxel`
+- Unity marker: `.pixelvoxel.json`
+- Settings path: `%LOCALAPPDATA%\PixelVoxel\settings.json`
+
+For technical details, see [FileFormat.md](docs/FileFormat.md) and [CoordinateSystem.md](docs/CoordinateSystem.md).
+
+## Building from Source
+
+Building Pixel2Voxel from source requires the .NET 10 SDK.
 
 ```powershell
 dotnet restore
@@ -91,7 +134,13 @@ dotnet build
 dotnet test
 ```
 
-Windows 배포본을 직접 만들려면:
+Run the desktop application:
+
+```powershell
+dotnet run --project src\PixelVoxel.App\PixelVoxel.App.csproj -c Debug
+```
+
+Create a Windows x64 self-contained build:
 
 ```powershell
 dotnet publish src\PixelVoxel.App\PixelVoxel.App.csproj `
@@ -100,42 +149,4 @@ dotnet publish src\PixelVoxel.App\PixelVoxel.App.csproj `
   -o artifacts\Pixel2Voxel-win-x64
 ```
 
-## Release 게시
-
-`.github/workflows/release.yml`은 `v*` 태그가 GitHub에 push되면 다음 작업을 자동으로 수행합니다.
-
-1. 전체 테스트 실행
-2. Windows x64 self-contained 앱 publish
-3. `Pixel2Voxel-win-x64.zip` 생성
-4. GitHub Release 생성 및 ZIP 첨부
-
-예를 들어 첫 버전을 게시하려면:
-
-```powershell
-git tag v0.1.0
-git push origin v0.1.0
-```
-
-Actions가 완료되면 README의 최신 Windows 다운로드 링크가 자동으로 해당 ZIP을 가리킵니다.
-
-## 프로젝트 구조
-
-- `src/PixelVoxel.App`: Avalonia UI와 데스크톱 실행 진입점
-- `src/PixelVoxel.Core`: 좌표, 복셀 문서, Visual Hull 재구성
-- `src/PixelVoxel.Imaging`: PNG 입력과 검증
-- `src/PixelVoxel.Rendering`: 표면 메시, 카메라, CPU/OpenGL 렌더링
-- `src/PixelVoxel.Export`: `.pxv`, PNG/GIF/OBJ 출력
-- `src/PixelVoxel.Cli`: 비대화형 진입점
-- `tests`: Unit, rendering, application, golden tests
-- `docs`: 좌표계, 저장 형식, 재구성 규칙
-
-## 저장 형식 호환성
-
-브랜드는 Pixel2Voxel로 변경됐지만 기존 프로젝트와 도구 호환성을 위해 다음 식별자는 유지합니다.
-
-- 프로젝트 확장자: `.pxv`
-- manifest format: `PixelVoxel`
-- Unity marker: `.pixelvoxel.json`
-- 사용자 설정 경로: `%LOCALAPPDATA%\PixelVoxel\settings.json`
-
-자세한 내용은 [FileFormat.md](docs/FileFormat.md)와 [CoordinateSystem.md](docs/CoordinateSystem.md)를 참고하세요.
+The product name is **Pixel2Voxel**, while existing source directories and namespaces currently retain the `PixelVoxel.*` naming for compatibility.
