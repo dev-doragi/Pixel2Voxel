@@ -1,52 +1,87 @@
-# Pixel Voxel
+# Pixel2Voxel
 
-The editor now includes resizable/collapsible side panels, categorized inspector search, project palettes, an exact voxel-face eyedropper, rotation GIF/Aseprite sheet export, and Unity-ready OBJ packages with pixel-preserving texture import settings.
+**Pixel2Voxel (P2V)** is a Windows-first desktop editor that reconstructs an editable voxel volume from six orthographic pixel-art views.
 
-Pixel Voxel은 여섯 방향의 픽셀 PNG를 공간적인 셀 점유 정보로 재구성하고, 회전 가능한 저해상도 3D 픽셀 프레임으로 표시하는 독립 데스크톱 프로그램입니다.
+Front, Right, Back, Left, Top, Bottom 이미지를 교차 투영하여 3D 점유 격자를 만들고, 복셀 편집·카메라 조정·회전 애니메이션·스프라이트 및 OBJ 출력까지 한 작업 흐름에서 처리합니다.
 
-## 현재 상태
+## 다운로드
 
-현재 버전은 다음 작업 흐름을 제공합니다.
+[최신 Windows 버전 다운로드](https://github.com/dev-doragi/IsometricPixel/releases/latest/download/Pixel2Voxel-win-x64.zip)
+
+모든 버전과 변경 사항은 [GitHub Releases](https://github.com/dev-doragi/IsometricPixel/releases)에서 확인할 수 있습니다.
+
+> 아직 Release가 게시되지 않았다면 위 직접 다운로드 링크는 404를 반환합니다. 아래의 **Release 게시** 절차로 첫 버전을 올리면 활성화됩니다.
+
+## 핵심 기술
+
+Pixel2Voxel은 AI 이미지 생성기가 아니라 **6방향 정사영 실루엣 기반 Visual Hull 복셀 재구성기**입니다.
 
 ```text
-6면 PNG → 좌표 정규화 → Visual Hull → 면별 색상 VoxelDocument
-→ 노출 표면 캐시 → CPU/OpenGL 픽셀 framebuffer → 정수 배율 표시
+Front volume ∩ Right volume ∩ Back volume
+∩ Left volume ∩ Top volume ∩ Bottom volume
+= reconstructed voxel volume
 ```
 
-- 정적 6×1 시트와 개별 6면 PNG 검사·정렬·Apply 작업 흐름
-- 고정 순서: Front, Right, Back, Left, Top, Bottom
-- 면 카드 교환, H/V Flip, 정수 Offset, 클리핑·알파 진단 및 최근 Import 10개
-- Alpha 0/255만 허용
-- Pixel 2:1 및 True Isometric 프리셋
-- 우클릭 드래그 Free View, 6면 정렬 카메라 스냅과 휠 정수 확대
-- 입력 픽셀 크기에 맞춘 회전 안전 framebuffer와 nearest-neighbor 표시
-- 카메라와 독립된 수평·수직 360° 모델 회전 애니메이션
-- 4단계 방향광, 1px 화면 공간 외곽선, 사용자 지정 배경색
-- `%LOCALAPPDATA%\PixelVoxel\settings.json`에 뷰포트 설정 저장
-- OpenGL 실패 시 CPU 기준 렌더러 fallback
-- 현재 논리 뷰 PNG 및 Pixel 2:1/True Isometric 4·8·16방향 가로 시트 출력
-- 방향 시트와 함께 Aseprite `json-array` 메타데이터 출력
-- 3D 뷰포트 Add, Erase, Paint, 박스 Select와 축 단위 이동
-- 편집 스트로크 단위 Undo/Redo 및 명시적인 볼륨 Resize
-- 휴대용 `.pxv` 프로젝트 저장·불러오기와 미저장 변경 보호
+각 후보 복셀을 여섯 입력 이미지에 투영하고, 모든 시점의 불투명 픽셀을 만족하는 셀만 남깁니다. 노출된 복셀 면에는 해당 원본 시트의 RGBA 색상을 보존합니다. 실루엣에 나타나지 않는 내부 공간이나 숨겨진 오목 구조는 복원할 수 없습니다.
 
-스프라이트 프레임 애니메이션, 충돌 픽셀 수정, trim/packing, GIF/OBJ 출력은 아직 구현하지 않았습니다.
+## 주요 기능
 
-## 솔루션 구조
+- `6×1` PNG 시트 또는 개별 6면 PNG Import
+- 고정 입력 순서: Front, Right, Back, Left, Top, Bottom
+- 면 교환, Horizontal/Vertical Flip, 정수 Offset과 입력 진단
+- 단계형 `Source → Map & Align → Validate → Reconstruct` 흐름
+- Add, Erase, Paint, Eyedropper, Box Select 복셀 편집
+- 편집 스트로크 단위 Undo/Redo와 볼륨 Resize
+- Pixel 2:1, True Isometric, Front, Right, Top, Free View 카메라
+- 회전된 원본 6면을 기준으로 하는 카메라 스냅
+- X/Y/Z 기즈모, 회전 미리보기, 속도 및 FPS 설정
+- Lighting, Outline, Background 조정
+- 현재 뷰 PNG, 4·8·16방향 시트와 Aseprite JSON 출력
+- 회전 GIF 및 애니메이션 PNG 시트 출력
+- Unity용 OBJ/MTL/팔레트 텍스처 패키지 출력
+- 휴대용 `.pxv` 프로젝트 저장·불러오기
+- OpenGL 뷰포트와 CPU fallback 렌더러
 
-- `src/PixelVoxel.App`: Avalonia UI와 GL 컨텍스트 수명주기
-- `src/PixelVoxel.Core`: 좌표, 이미지, Visual Hull, 문서 데이터
-- `src/PixelVoxel.Rendering`: 표면 캐시, 공통 카메라, CPU/Silk.NET 렌더러
-- `src/PixelVoxel.Imaging`: ImageSharp 기반 PNG 입력과 검증
-- `src/PixelVoxel.Export`: 저장 및 출력 계약
-- `src/PixelVoxel.Cli`: 비대화형 진입점
-- `tests/`: Core, Imaging, Rendering 및 golden 테스트
-- `benchmark/`: 기준 입력, 수치, 관찰 기록
+## 입력 시트
+
+모든 슬롯은 동일한 캔버스 크기여야 하며 알파는 완전 투명 `0` 또는 완전 불투명 `255`를 사용합니다.
+
+```text
+┌───────┬───────┬──────┬──────┬─────┬────────┐
+│ Front │ Right │ Back │ Left │ Top │ Bottom │
+└───────┴───────┴──────┴──────┴─────┴────────┘
+```
+
+Import 후 각 면의 매핑과 정렬을 확인하고 Validation을 통과한 뒤 Reconstruct를 실행합니다.
 
 ## 요구 환경
 
-- .NET SDK 10.0.301 이상
-- Windows 우선 지원
+- Windows 10/11
+- 소스 빌드 시 .NET SDK 10
+
+GitHub Release의 `Pixel2Voxel-win-x64.zip`은 self-contained 빌드이므로 별도 .NET 설치 없이 실행할 수 있습니다.
+
+## 소스에서 실행
+
+처음 실행하거나 코드가 변경된 경우:
+
+```powershell
+dotnet run --project src\PixelVoxel.App\PixelVoxel.App.csproj -c Debug
+```
+
+이미 Debug 빌드가 존재하는 경우:
+
+```powershell
+dotnet run --project src\PixelVoxel.App\PixelVoxel.App.csproj -c Debug --no-build
+```
+
+빌드된 실행 파일:
+
+```text
+src\PixelVoxel.App\bin\Debug\net10.0\Pixel2Voxel.exe
+```
+
+제품명은 Pixel2Voxel이지만 기존 코드와 프로젝트 호환성을 위해 소스 디렉터리 및 네임스페이스는 아직 `PixelVoxel.*`을 유지합니다.
 
 ## 빌드와 테스트
 
@@ -56,48 +91,51 @@ dotnet build
 dotnet test
 ```
 
-## 실행
+Windows 배포본을 직접 만들려면:
 
 ```powershell
-dotnet run --project src\PixelVoxel.App --no-build
+dotnet publish src\PixelVoxel.App\PixelVoxel.App.csproj `
+  -c Release -r win-x64 --self-contained true `
+  -p:PublishSingleFile=true -p:DebugType=None -p:DebugSymbols=false `
+  -o artifacts\Pixel2Voxel-win-x64
 ```
 
-빌드된 Windows 실행 파일은 다음 경로에 생성됩니다.
+## Release 게시
 
-```text
-src\PixelVoxel.App\bin\Debug\net10.0\PixelVoxel.App.exe
+`.github/workflows/release.yml`은 `v*` 태그가 GitHub에 push되면 다음 작업을 자동으로 수행합니다.
+
+1. 전체 테스트 실행
+2. Windows x64 self-contained 앱 publish
+3. `Pixel2Voxel-win-x64.zip` 생성
+4. GitHub Release 생성 및 ZIP 첨부
+
+예를 들어 첫 버전을 게시하려면:
+
+```powershell
+git tag v0.1.0
+git push origin v0.1.0
 ```
 
-## 사용 방법
+Actions가 완료되면 README의 최신 Windows 다운로드 링크가 자동으로 해당 ZIP을 가리킵니다.
 
-### 6×1 시트
+## 프로젝트 구조
 
-1. Aseprite에서 한 행에 여섯 개의 동일 크기 슬롯으로 PNG를 내보냅니다.
-2. 순서를 Front, Right, Back, Left, Top, Bottom으로 배치합니다.
-3. `Import 6×1 Sheet`를 눌러 PNG를 선택하거나 Sheet Drop Zone에 드롭합니다.
-4. 여섯 카드를 확인하고 필요하면 카드를 드래그해 교환하거나 Flip/Offset을 조정합니다.
-5. `Apply / Reconstruct`를 눌러 현재 정렬을 모델에 적용합니다.
+- `src/PixelVoxel.App`: Avalonia UI와 데스크톱 실행 진입점
+- `src/PixelVoxel.Core`: 좌표, 복셀 문서, Visual Hull 재구성
+- `src/PixelVoxel.Imaging`: PNG 입력과 검증
+- `src/PixelVoxel.Rendering`: 표면 메시, 카메라, CPU/OpenGL 렌더링
+- `src/PixelVoxel.Export`: `.pxv`, PNG/GIF/OBJ 출력
+- `src/PixelVoxel.Cli`: 비대화형 진입점
+- `tests`: Unit, rendering, application, golden tests
+- `docs`: 좌표계, 저장 형식, 재구성 규칙
 
-### 개별 PNG
+## 저장 형식 호환성
 
-1. Import 패널에서 여섯 방향 버튼으로 각 PNG를 지정합니다.
-2. 여섯 파일은 동일한 캔버스 크기를 사용해야 합니다.
-3. `Inspect Assigned Views`를 눌러 카드 미리보기를 확인합니다.
-4. `Apply / Reconstruct`를 눌러 모델에 적용합니다.
+브랜드는 Pixel2Voxel로 변경됐지만 기존 프로젝트와 도구 호환성을 위해 다음 식별자는 유지합니다.
 
-### PNG 출력
+- 프로젝트 확장자: `.pxv`
+- manifest format: `PixelVoxel`
+- Unity marker: `.pixelvoxel.json`
+- 사용자 설정 경로: `%LOCALAPPDATA%\PixelVoxel\settings.json`
 
-- `Export > Export Current View PNG...`: 현재 카메라의 논리 픽셀 프레임을 1× PNG로 저장합니다.
-- `Export > Export Direction Sheet...`: 4·8·16방향 프레임을 같은 캔버스의 가로 PNG로 저장하고 같은 이름의 Aseprite JSON을 생성합니다.
-- 방향 출력은 현재 GL 화면과 UI 확대 배율을 사용하지 않고 결정론적인 CPU 픽셀 렌더러를 사용합니다.
-- 기본 출력은 투명 배경이며 우측 Sprite Export 패널에서 현재 배경 포함, 방향 수, Pixel 2:1/True Isometric을 선택할 수 있습니다.
-
-### 복셀 편집과 프로젝트
-
-- 우측 Voxel Editor에서 Add, Erase, Paint, Select 도구를 선택하고 뷰포트를 좌클릭 또는 드래그합니다.
-- Paint 중 Shift를 누르면 선택 복셀의 여섯 면을 같은 색으로 칠합니다.
-- Select는 두 복셀을 차례로 클릭해 축 정렬 영역을 만들며 `±X/±Y/±Z` 버튼으로 이동합니다.
-- `Ctrl+Z`, `Ctrl+Y`, `Delete`, `Escape`로 Undo, Redo, 선택 삭제, 선택 해제를 실행합니다.
-- `File` 메뉴에서 `.pxv` 프로젝트를 저장하거나 불러옵니다. 프로젝트에는 현재 복셀 문서와 정렬된 직교 이미지가 포함됩니다.
-
-Viewport에서 프리셋을 선택하거나 오른쪽 버튼으로 드래그해 독립된 카메라로 모델을 둘러볼 수 있습니다. 휠을 처음 움직이면 현재 Fit 배율에서 Manual 1×~16× 정수 배율로 전환됩니다. 수평·수직 Animation은 모델 자체의 회전을 제어하므로 카메라를 움직여도 회전 각도와 진행 속도가 유지됩니다. 우측 패널에서 디렉셔널 라이트 회전, 외곽선과 배경색을 조정할 수 있습니다.
+자세한 내용은 [FileFormat.md](docs/FileFormat.md)와 [CoordinateSystem.md](docs/CoordinateSystem.md)를 참고하세요.

@@ -4,8 +4,13 @@
     <AssemblyName>Pixel2Voxel</AssemblyName>
     <Product>Pixel2Voxel</Product>
     <Description>Six-view pixel-to-voxel reconstruction studio</Description>
+    <ApplicationIcon>Assets\Pixel2Voxel.ico</ApplicationIcon>
     <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
   </PropertyGroup>
+
+  <ItemGroup>
+    <AvaloniaResource Include="Assets\Pixel2Voxel.ico" />
+  </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="Avalonia.Desktop" />

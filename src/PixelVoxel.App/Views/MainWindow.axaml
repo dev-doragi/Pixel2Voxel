@@ -7,6 +7,7 @@
         x:DataType="vm:MainWindowViewModel"
         Width="1360" Height="860" MinWidth="720" MinHeight="600"
         Background="{StaticResource AppBackgroundBrush}"
+        Icon="/Assets/Pixel2Voxel.ico"
         Title="{Binding WindowTitle}"
         KeyDown="Window_KeyDown">
   <Grid RowDefinitions="Auto,42,*,28">
