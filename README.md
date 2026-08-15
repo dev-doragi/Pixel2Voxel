@@ -1,5 +1,7 @@
 # Pixel2Voxel
 
+<img width="315" height="315" alt="pixel-voxel-rotation" src="https://github.com/user-attachments/assets/3e083337-730b-4402-990e-5b5e2671ecb4" />
+
 **Pixel2Voxel (P2V)** is a Windows-first desktop editor that reconstructs an editable voxel volume from six orthographic pixel-art views.
 
 Front, Right, Back, Left, Top, Bottom 이미지를 교차 투영하여 3D 점유 격자를 만들고, 복셀 편집·카메라 조정·회전 애니메이션·스프라이트 및 OBJ 출력까지 한 작업 흐름에서 처리합니다.
