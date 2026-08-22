@@ -26,7 +26,7 @@ Pixel2Voxel(P2V)은 직교 PNG 이미지의 Front, Side, Top 뷰를 입력으로
 - Aseprite 정적 6×1 PNG 및 개별 6면 PNG 비파괴 검사
 - Target Face 카드 교환, H/V Flip, 정수 Offset과 Apply/Reconstruct 분리
 - 중간 알파, 빈 면, 크기 불일치, 클리핑 진단과 최근 Import 10개
-- 이진 알파 검증과 공통 좌표계 정규화
+- Alpha 0/Alpha > 0 점유 판정과 공통 좌표계 정규화
 - 제공된 알파 실루엣 교집합 기반 visual-hull 복셀 재구성
 - 셀마다 방향별 원본 RGBA 보존
 - 노출 면 기반 비영속 렌더 캐시
@@ -38,12 +38,12 @@ Pixel2Voxel(P2V)은 직교 PNG 이미지의 Front, Side, Top 뷰를 입력으로
 - 3D 뷰포트 복셀 추가·삭제·면 색상 편집과 박스 선택 이동
 - 편집 스트로크 단위 Undo/Redo와 명시적인 볼륨 크기 변경
 - 선택 및 호버의 논리 1px 픽셀 외곽선
-- 휴대용 `.pxv` version 1 프로젝트 저장·불러오기
-
-## 아직 구현하지 않은 범위
-
-- 애니메이션 프레임 정렬과 재생
-- 반투명 픽셀 및 블렌딩
-- 충돌 픽셀 시각화·수정 도구
-- 스프라이트 trim 및 atlas packing
-- GIF 및 OBJ 출력
+- 휴대용 `.pxv` version 3 프로젝트 저장·불러오기와 v1/v2 읽기 호환
+- Alpha 1~255 면 색상 보존과 후면→전면 source-over CPU 기준 렌더링
+- 1~6면 부분 입력과 미관측 축의 사용자 지정 길이
+- Aseprite PNG+JSON 면 애니메이션 동기 검사, 프레임별 재구성·편집·재생·저장
+- 알파 경계 trim, 결정적 MaxRects 단일 atlas packing, 2px padding, 1px edge extrusion,
+  최대 4096×4096 및 원본 오프셋·피벗·duration Aseprite 호환 JSON
+- 동일한 face 좌표 변환으로 복셀을 원본 뷰에 재투영한 실루엣 충돌 진단과 변환된
+  원본 마스크 픽셀 오버레이·수정
+- 회전 GIF 및 Unity OBJ 패키지 출력

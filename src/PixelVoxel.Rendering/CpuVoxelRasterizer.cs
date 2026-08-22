@@ -29,40 +29,57 @@ public sealed class CpuVoxelRasterizer
         VoxelMeshData mesh,
         VoxelRenderTransform transform,
         int width,
-        int height)
+        int height,
+        VoxelRenderStyle style)
     {
         ArgumentNullException.ThrowIfNull(mesh);
         ArgumentNullException.ThrowIfNull(transform);
         PixelRasterSurface surface = new(width, height);
-        ReadOnlySpan<VoxelMeshVertex> vertices = mesh.Vertices.Span;
-        ReadOnlySpan<Vector3> normals = mesh.FaceNormals.Span;
+        VoxelMeshVertex[] vertices = mesh.Vertices.ToArray();
+        Vector3[] normals = mesh.FaceNormals.ToArray();
 
-        for (int faceIndex = 0; faceIndex < mesh.ExposedFaceCount; faceIndex++)
+        int[] faceOrder = Enumerable.Range(0, mesh.ExposedFaceCount)
+            .Where(faceIndex => transform.IsFrontFacing(normals[faceIndex]))
+            .OrderBy(faceIndex => AverageDepth(vertices, faceIndex, transform))
+            .ThenBy(faceIndex => faceIndex)
+            .ToArray();
+
+        foreach (int faceIndex in faceOrder)
         {
             Vector3 normal = normals[faceIndex];
-            if (!transform.IsFrontFacing(normal))
-            {
-                continue;
-            }
-
             int offset = faceIndex * 4;
             ScreenVertex first = Project(vertices[offset], transform);
             ScreenVertex second = Project(vertices[offset + 1], transform);
             ScreenVertex third = Project(vertices[offset + 2], transform);
             ScreenVertex fourth = Project(vertices[offset + 3], transform);
-            Rgba32Color color = vertices[offset].Color;
             Vector3 worldNormal = transform.TransformNormalToWorld(normal);
+            Rgba32Color color = PixelSurfacePostProcessor.ApplyLighting(
+                vertices[offset].Color,
+                worldNormal,
+                style.Lighting);
             RasterizeTriangleFixed(
                 first, second, third, color, surface.Colors, surface.Depth,
                 width, height, worldNormal, surface.Normals, surface.Coverage,
-                vertices[offset].EditorMask, surface.EditorMask);
+                vertices[offset].EditorMask, surface.EditorMask, blend: true);
             RasterizeTriangleFixed(
                 first, third, fourth, color, surface.Colors, surface.Depth,
                 width, height, worldNormal, surface.Normals, surface.Coverage,
-                vertices[offset].EditorMask, surface.EditorMask);
+                vertices[offset].EditorMask, surface.EditorMask, blend: true);
         }
 
         return surface;
+    }
+
+    private static float AverageDepth(
+        ReadOnlySpan<VoxelMeshVertex> vertices,
+        int faceIndex,
+        VoxelRenderTransform transform)
+    {
+        int offset = faceIndex * 4;
+        return (transform.ProjectToScreen(vertices[offset].Position).Z +
+                transform.ProjectToScreen(vertices[offset + 1].Position).Z +
+                transform.ProjectToScreen(vertices[offset + 2].Position).Z +
+                transform.ProjectToScreen(vertices[offset + 3].Position).Z) / 4f;
     }
 
     private static PixelFramebuffer RenderCore(
@@ -154,7 +171,8 @@ public sealed class CpuVoxelRasterizer
         Vector3[]? normalBuffer = null,
         bool[]? coverageBuffer = null,
         float editorMask = 0f,
-        float[]? editorMaskBuffer = null)
+        float[]? editorMaskBuffer = null,
+        bool blend = false)
     {
         float area = Edge(first, second, third.X, third.Y);
         if (MathF.Abs(area) < 0.0001f)
@@ -188,10 +206,15 @@ public sealed class CpuVoxelRasterizer
                     (third.Z * thirdWeight);
                 int pixelIndex = (y * width) + x;
 
+                if (blend)
+                {
+                    pixels[pixelIndex] = SourceOver(color, pixels[pixelIndex]);
+                }
+
                 if (depth > depthBuffer[pixelIndex])
                 {
                     depthBuffer[pixelIndex] = depth;
-                    pixels[pixelIndex] = color;
+                    if (!blend) pixels[pixelIndex] = color;
                     if (normalBuffer is not null)
                     {
                         normalBuffer[pixelIndex] = normal;
@@ -211,6 +234,26 @@ public sealed class CpuVoxelRasterizer
         }
     }
 
+    private static Rgba32Color SourceOver(Rgba32Color source, Rgba32Color destination)
+    {
+        float sourceAlpha = source.Alpha / 255f;
+        float destinationAlpha = destination.Alpha / 255f;
+        float outputAlpha = sourceAlpha + (destinationAlpha * (1f - sourceAlpha));
+        if (outputAlpha <= 0f) return default;
+
+        static byte Channel(byte sourceChannel, byte destinationChannel, float sourceAlpha, float destinationAlpha, float outputAlpha) =>
+            (byte)Math.Clamp((int)MathF.Round(
+                ((sourceChannel * sourceAlpha) +
+                 (destinationChannel * destinationAlpha * (1f - sourceAlpha))) / outputAlpha,
+                MidpointRounding.AwayFromZero), 0, 255);
+
+        return new Rgba32Color(
+            Channel(source.Red, destination.Red, sourceAlpha, destinationAlpha, outputAlpha),
+            Channel(source.Green, destination.Green, sourceAlpha, destinationAlpha, outputAlpha),
+            Channel(source.Blue, destination.Blue, sourceAlpha, destinationAlpha, outputAlpha),
+            (byte)Math.Clamp((int)MathF.Round(outputAlpha * 255f, MidpointRounding.AwayFromZero), 0, 255));
+    }
+
     private static void RasterizeTriangleFixed(
         ScreenVertex first,
         ScreenVertex second,
@@ -224,7 +267,8 @@ public sealed class CpuVoxelRasterizer
         Vector3[]? normalBuffer = null,
         bool[]? coverageBuffer = null,
         float editorMask = 0f,
-        float[]? editorMaskBuffer = null)
+        float[]? editorMaskBuffer = null,
+        bool blend = false)
     {
         FixedScreenVertex fixedFirst = ToFixed(first);
         FixedScreenVertex fixedSecond = ToFixed(second);
@@ -275,10 +319,15 @@ public sealed class CpuVoxelRasterizer
                     (fixedThird.Z * thirdWeight * inverseArea));
                 int pixelIndex = (y * width) + x;
 
+                if (blend)
+                {
+                    pixels[pixelIndex] = SourceOver(color, pixels[pixelIndex]);
+                }
+
                 if (depth > depthBuffer[pixelIndex])
                 {
                     depthBuffer[pixelIndex] = depth;
-                    pixels[pixelIndex] = color;
+                    if (!blend) pixels[pixelIndex] = color;
                     if (normalBuffer is not null)
                     {
                         normalBuffer[pixelIndex] = normal;

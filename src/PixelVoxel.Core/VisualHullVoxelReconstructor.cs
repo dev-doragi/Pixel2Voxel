@@ -1,7 +1,7 @@
 namespace PixelVoxel.Core;
 
 /// <summary>
-/// Builds a visual-hull voxel volume from the intersection of supplied opaque silhouettes.
+/// Builds a visual-hull voxel volume from the intersection of supplied non-transparent silhouettes.
 /// </summary>
 public sealed class VisualHullVoxelReconstructor : IVoxelReconstructor
 {
@@ -9,12 +9,18 @@ public sealed class VisualHullVoxelReconstructor : IVoxelReconstructor
     public const long MaximumCandidateCellCount = 1_048_576;
 
     /// <inheritdoc />
-    public VoxelDocument Reconstruct(OrthographicViewSet views)
+    public VoxelDocument Reconstruct(OrthographicViewSet views) =>
+        Reconstruct(views, VoxelReconstructionOptions.UnitFallback);
+
+    /// <inheritdoc />
+    public VoxelDocument Reconstruct(OrthographicViewSet views, VoxelReconstructionOptions options)
     {
         ArgumentNullException.ThrowIfNull(views);
+        ArgumentNullException.ThrowIfNull(options);
+        options.Validate();
 
         ValidateCommonCanvas(views);
-        ReconstructionSpace space = ResolveSpace(views);
+        ReconstructionSpace space = ResolveSpace(views, options);
         long candidateCount = checked(
             (long)space.Dimensions.Width *
             space.Dimensions.Height *
@@ -44,7 +50,7 @@ public sealed class VisualHullVoxelReconstructor : IVoxelReconstructor
                         (int imageX, int imageY) = ProjectToImage(face, image, coordinate, space);
                         Rgba32Color color = image.GetPixel(imageX, imageY);
 
-                        if (color.Alpha != byte.MaxValue)
+                        if (color.Alpha == 0)
                         {
                             occupied = false;
                             break;
@@ -55,6 +61,15 @@ public sealed class VisualHullVoxelReconstructor : IVoxelReconstructor
 
                     if (occupied)
                     {
+                        if (colors.Count < Enum.GetValues<VoxelFace>().Length)
+                        {
+                            Rgba32Color fallback = AveragePremultiplied(colors.Values);
+                            foreach (VoxelFace missingFace in Enum.GetValues<VoxelFace>().Where(face => !colors.ContainsKey(face)))
+                            {
+                                colors[missingFace] = fallback;
+                            }
+                        }
+
                         cells[coordinate] = new VoxelCell(colors);
                     }
                 }
@@ -64,7 +79,24 @@ public sealed class VisualHullVoxelReconstructor : IVoxelReconstructor
         return new VoxelDocument(new ReconstructedVoxelStorage(space.Dimensions, cells));
     }
 
-    private static void ValidateCommonCanvas(OrthographicViewSet views)
+    private static Rgba32Color AveragePremultiplied(IEnumerable<Rgba32Color> colors)
+    {
+        Rgba32Color[] source = colors.ToArray();
+        if (source.Length == 0) throw new InvalidOperationException("An occupied voxel must have a source color.");
+        double alpha = source.Average(color => color.Alpha / 255d);
+        if (alpha <= 0d) return default;
+        byte Channel(Func<Rgba32Color, byte> select) =>
+            (byte)Math.Clamp((int)Math.Round(
+                source.Average(color => select(color) * (color.Alpha / 255d)) / alpha,
+                MidpointRounding.AwayFromZero), 0, 255);
+        return new Rgba32Color(
+            Channel(color => color.Red),
+            Channel(color => color.Green),
+            Channel(color => color.Blue),
+            (byte)Math.Clamp((int)Math.Round(alpha * 255d, MidpointRounding.AwayFromZero), 0, 255));
+    }
+
+    internal static void ValidateCommonCanvas(OrthographicViewSet views)
     {
         OrthographicImage first = views.Views.First().Value;
 
@@ -79,7 +111,9 @@ public sealed class VisualHullVoxelReconstructor : IVoxelReconstructor
         }
     }
 
-    private static ReconstructionSpace ResolveSpace(OrthographicViewSet views)
+    internal static ReconstructionSpace ResolveSpace(
+        OrthographicViewSet views,
+        VoxelReconstructionOptions options)
     {
         AxisExtent x = new();
         AxisExtent y = new();
@@ -88,27 +122,19 @@ public sealed class VisualHullVoxelReconstructor : IVoxelReconstructor
         foreach ((VoxelFace face, OrthographicImage image) in views.Views)
         {
             FaceCoordinateTransform transform = FaceCoordinateTransforms.Get(face);
-            bool hasOpaquePixel = false;
+            bool hasVisiblePixel = false;
 
             for (int imageY = 0; imageY < image.Height; imageY++)
             {
                 for (int imageX = 0; imageX < image.Width; imageX++)
                 {
                     Rgba32Color color = image.GetPixel(imageX, imageY);
-                    if (color.Alpha is > 0 and < byte.MaxValue)
-                    {
-                        throw new ArgumentException(
-                            $"The {face} view contains non-binary alpha {color.Alpha} at " +
-                            $"({imageX}, {imageY}).",
-                            nameof(views));
-                    }
-
                     if (color.Alpha == 0)
                     {
                         continue;
                     }
 
-                    hasOpaquePixel = true;
+                    hasVisiblePixel = true;
                     int horizontal = transform.FlipHorizontal
                         ? image.Width - 1 - imageX
                         : imageX;
@@ -121,20 +147,23 @@ public sealed class VisualHullVoxelReconstructor : IVoxelReconstructor
                 }
             }
 
-            if (!hasOpaquePixel)
+            if (!hasVisiblePixel)
             {
-                throw new ArgumentException($"The {face} view contains no opaque pixels.", nameof(views));
+                throw new ArgumentException($"The {face} view contains no visible pixels.", nameof(views));
             }
         }
 
         return new ReconstructionSpace(
-            new VoxelDimensions(x.Length, y.Length, z.Length),
+            new VoxelDimensions(
+                x.ResolveLength(options.UnobservedXLength),
+                y.ResolveLength(options.UnobservedYLength),
+                z.ResolveLength(options.UnobservedZLength)),
             x.Minimum,
             y.Minimum,
             z.Minimum);
     }
 
-    private static (int X, int Y) ProjectToImage(
+    internal static (int X, int Y) ProjectToImage(
         VoxelFace face,
         OrthographicImage image,
         VoxelCoordinate coordinate,
@@ -181,6 +210,9 @@ public sealed class VisualHullVoxelReconstructor : IVoxelReconstructor
 
         public int Length => _minimum == int.MaxValue ? 1 : checked(_maximum - _minimum + 1);
 
+        public int ResolveLength(int unobservedLength) =>
+            _minimum == int.MaxValue ? unobservedLength : Length;
+
         public void Include(int value)
         {
             _minimum = Math.Min(_minimum, value);
@@ -188,7 +220,7 @@ public sealed class VisualHullVoxelReconstructor : IVoxelReconstructor
         }
     }
 
-    private sealed record ReconstructionSpace(
+    internal sealed record ReconstructionSpace(
         VoxelDimensions Dimensions,
         int XMinimum,
         int YMinimum,

@@ -5,6 +5,11 @@ using PixelVoxel.Rendering;
 
 namespace PixelVoxel.App.Services;
 
+public sealed record TimelineRenderFrame(
+    string Name,
+    int DurationMilliseconds,
+    VoxelMeshData Mesh);
+
 /// <summary>Bridges render snapshots to backend-independent sprite export contracts.</summary>
 public sealed class SpriteExportCoordinator
 {
@@ -157,10 +162,10 @@ public sealed class SpriteExportCoordinator
                 float angle = 360f * index / frameCount;
                 VoxelModelRotationState rotation = index == 0
                     ? baseRotation
-                    : new VoxelModelRotationState(
-                        animateYaw ? baseRotation.YawDegrees + angle : baseRotation.YawDegrees,
-                        animatePitch ? baseRotation.PitchDegrees + angle : baseRotation.PitchDegrees,
-                        animateRoll ? baseRotation.RollDegrees + angle : baseRotation.RollDegrees);
+                    : baseRotation.RotateFixedLocal(
+                        animateYaw ? angle : 0f,
+                        animatePitch ? angle : 0f,
+                        animateRoll ? angle : 0f);
                 SpriteFrame rendered = RenderFrame($"rotation_{index:D4}", index, rotation.YawDegrees, mesh, exportCamera, rotation, layout, outputStyle, cancellationToken);
                 pivot ??= (rendered.PivotX, rendered.PivotY);
                 frames[index] = new SpriteFrame(rendered.Name, index, rotation.YawDegrees,
@@ -182,6 +187,60 @@ public sealed class SpriteExportCoordinator
             animateYaw, animatePitch, animateRoll, camera, baseRotation, mesh, layout, style,
             transparentBackground, cancellationToken);
         return await _exporter.ExportAsync(new SpriteSheetExportRequest(path, frames, true, "rotation"), cancellationToken);
+    }
+
+    /// <summary>Renders independently edited timeline meshes on one stable canvas.</summary>
+    public Task<SpriteFrame[]> RenderTimelineFramesAsync(
+        IReadOnlyList<TimelineRenderFrame> timeline,
+        VoxelCameraState camera,
+        VoxelModelRotationState modelRotation,
+        PixelRenderLayout layout,
+        VoxelRenderStyle style,
+        bool transparentBackground,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(timeline);
+        if (timeline.Count == 0) throw new ArgumentException("At least one timeline frame is required.", nameof(timeline));
+        if (timeline.Any(frame => frame.DurationMilliseconds <= 0)) throw new InvalidDataException("Timeline durations must be positive.");
+        if (timeline.Select(frame => frame.Name).Distinct(StringComparer.Ordinal).Count() != timeline.Count)
+            throw new InvalidDataException("Timeline frame names must be unique.");
+        VoxelCameraState exportCamera = camera with { PanX = 0f, PanY = 0f, Zoom = 1f };
+        VoxelRenderStyle outputStyle = ResolveOutputStyle(style, transparentBackground);
+        return Task.Run(() =>
+        {
+            SpriteFrame[] output = new SpriteFrame[timeline.Count];
+            (int X, int Y)? sharedPivot = null;
+            for (int index = 0; index < timeline.Count; index++)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                TimelineRenderFrame source = timeline[index];
+                SpriteFrame rendered = RenderFrame(
+                    source.Name, index, modelRotation.YawDegrees, source.Mesh,
+                    exportCamera, modelRotation, layout, outputStyle, cancellationToken);
+                sharedPivot ??= (rendered.PivotX, rendered.PivotY);
+                output[index] = new SpriteFrame(
+                    rendered.Name, index, rendered.YawDegrees, rendered.Width, rendered.Height,
+                    rendered.Pixels.ToArray(), sharedPivot.Value.X, sharedPivot.Value.Y,
+                    source.DurationMilliseconds);
+            }
+            return output;
+        }, cancellationToken);
+    }
+
+    public async Task<SpriteExportResult> ExportTimelineSheetAsync(
+        string path,
+        IReadOnlyList<TimelineRenderFrame> timeline,
+        VoxelCameraState camera,
+        VoxelModelRotationState modelRotation,
+        PixelRenderLayout layout,
+        VoxelRenderStyle style,
+        bool transparentBackground,
+        CancellationToken cancellationToken = default)
+    {
+        SpriteFrame[] frames = await RenderTimelineFramesAsync(
+            timeline, camera, modelRotation, layout, style, transparentBackground, cancellationToken);
+        return await _exporter.ExportAsync(
+            new SpriteSheetExportRequest(path, frames, true, "timeline"), cancellationToken);
     }
 
     /// <summary>Gets model yaw angles ordered clockwise from the unrotated model.</summary>

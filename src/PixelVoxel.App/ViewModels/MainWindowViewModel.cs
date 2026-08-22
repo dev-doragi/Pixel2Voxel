@@ -31,6 +31,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         VoxelFace.Bottom,
     ];
     private readonly AsepriteSpriteSheetImporter _importer;
+    private readonly AsepriteAnimationImporter _animationImporter;
     private readonly IVoxelReconstructor _reconstructor;
     private readonly VoxelSurfaceMesher _mesher;
     private readonly PixelArtVoxelRasterizer _pixelArtRasterizer;
@@ -44,6 +45,9 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     private readonly VoxelPicker _voxelPicker;
     private readonly VoxelEditHistory _editHistory = new();
     private readonly Dictionary<VoxelFace, string> _separatePaths = [];
+    private readonly Dictionary<VoxelFace, AsepriteFaceAnimationSource> _animatedFaceSources = [];
+    private readonly Dictionary<(VoxelFace Face, int X, int Y), Rgba32Color> _sourceMaskEdits = [];
+    private readonly List<ProjectFrameState> _projectFrames = [];
     private CancellationTokenSource? _importCancellation;
     private CancellationTokenSource? _exportCancellation;
     private CancellationTokenSource? _meshCancellation;
@@ -59,7 +63,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     private VoxelModelRotationState _modelRotation = VoxelModelRotationState.Identity;
     private VoxelRenderStyle _renderStyle;
     private WriteableBitmap? _viewportBitmap;
-    private string _importSummary = "No six-view input loaded.";
+    private string _importSummary = "No orthographic input loaded.";
     private string _statusText = "Ready";
     private string _viewportMessage = "Import a 6×1 sheet or assign six PNG files.";
     private string _cameraSummary = "Pixel Preview · Pixel 2:1";
@@ -80,6 +84,11 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     private bool _verticalAnimationEnabled;
     private bool _rollAnimationEnabled;
     private bool _animationPreviewPlaying;
+    private VoxelModelRotationState _animationBaseRotation = VoxelModelRotationState.Identity;
+    private double _animationElapsedSeconds;
+    private int _currentFrameIndex;
+    private bool _timelinePlaying;
+    private double _timelineElapsedMilliseconds;
     private float _animationSpeed;
     private int? _manualZoomScale;
     private bool _lightingEnabled;
@@ -92,6 +101,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     private AvaloniaColor _outlineColor;
     private AvaloniaColor _backgroundColor;
     private bool _cpuFallbackActive;
+    private bool _openGlUnavailable;
     private bool _canApplyImport;
     private bool _isImportDraftLoaded;
     private int _exportDirectionCount;
@@ -113,9 +123,13 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     private int _resizeWidth = 1;
     private int _resizeHeight = 1;
     private int _resizeDepth = 1;
+    private int _unobservedXLength = 1;
+    private int _unobservedYLength = 1;
+    private int _unobservedZLength = 1;
     private long _meshRevision;
     private long _importRevision;
     private bool _paletteDirty;
+    private bool _projectSettingsDirty;
     private int _animationFramesPerSecond = 12;
     private int _gifExportResizePercent = 400;
     private bool _leftPanelVisible = true;
@@ -147,9 +161,11 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         IProjectSerializer? projectSerializer = null,
         VoxelPicker? voxelPicker = null,
         GifAnimationExporter? gifExporter = null,
-        IObjExporter? objExporter = null)
+        IObjExporter? objExporter = null,
+        AsepriteAnimationImporter? animationImporter = null)
     {
         _importer = importer;
+        _animationImporter = animationImporter ?? new AsepriteAnimationImporter();
         _reconstructor = reconstructor;
         _mesher = mesher;
         _pixelArtRasterizer = pixelArtRasterizer;
@@ -265,7 +281,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     public bool HasDocument => _document is not null;
 
     /// <summary>Gets whether the current project differs from its saved checkpoint.</summary>
-    public bool IsProjectDirty => _document is not null && (_projectPath is null || _editHistory.IsDirty || _paletteDirty);
+    public bool IsProjectDirty => _document is not null &&
+        (_projectPath is null || _editHistory.IsDirty || _paletteDirty || _projectSettingsDirty);
 
     /// <summary>Gets whether the most recent edit can be undone.</summary>
     public bool CanUndo => _editHistory.CanUndo;
@@ -356,7 +373,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     public string ImportValidationStatus => !IsImportDraftLoaded
         ? "Choose a source to continue"
         : CanApplyImport
-            ? "Ready · all six views passed validation"
+            ? "Ready · selected views passed validation"
             : "Blocked · resolve the highlighted source issues";
 
     public ImportFaceSlotViewModel? SelectedImportFaceSlot
@@ -387,7 +404,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             {
                 nameof(IsCurrentViewExport), nameof(IsDirectionSheetExport),
                 nameof(IsAnimatedGifExport), nameof(IsAnimationSheetExport),
-                nameof(IsUnityObjExport), nameof(PrimaryExportLabel),
+                nameof(IsTrimmedAtlasExport),
+                nameof(IsUnityObjExport), nameof(PrimaryExportLabel), nameof(CanPrimaryExport),
             }) OnPropertyChanged(property);
         }
     }
@@ -395,6 +413,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     public bool IsDirectionSheetExport => SelectedExportMode == ExportWorkflowMode.DirectionSheet;
     public bool IsAnimatedGifExport => SelectedExportMode == ExportWorkflowMode.AnimatedGif;
     public bool IsAnimationSheetExport => SelectedExportMode == ExportWorkflowMode.AnimationSheet;
+    public bool IsTrimmedAtlasExport => SelectedExportMode == ExportWorkflowMode.TrimmedAtlas;
     public bool IsUnityObjExport => SelectedExportMode == ExportWorkflowMode.UnityObj;
     public string PrimaryExportLabel => SelectedExportMode switch
     {
@@ -402,6 +421,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         ExportWorkflowMode.DirectionSheet => "Export direction sheet...",
         ExportWorkflowMode.AnimatedGif => "Export animated GIF...",
         ExportWorkflowMode.AnimationSheet => "Export animation sheet...",
+        ExportWorkflowMode.TrimmedAtlas => "Export trimmed atlas...",
         ExportWorkflowMode.UnityObj => "Export Unity OBJ package...",
         _ => "Export...",
     };
@@ -466,7 +486,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         get => _editColor;
         set
         {
-            if (!SetField(ref _editColor, new AvaloniaColor(255, value.R, value.G, value.B))) return;
+            if (!SetField(ref _editColor, value)) return;
             if (SelectedEditTool == VoxelEditTool.Paint && (_hoverPick is not null || _editStroke.Count > 0))
             {
                 RefreshEditorOverlay();
@@ -547,9 +567,9 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     }
     public bool ShowEditCategory => MatchesInspector("edit palette voxel color selection resize eyedropper");
     public bool ShowCameraCategory => MatchesInspector("camera view zoom preset orbit");
-    public bool ShowAnimationCategory => MatchesInspector("animation yaw pitch roll speed fps gif");
+    public bool ShowAnimationCategory => MatchesInspector("animation timeline yaw pitch roll speed fps gif sheet atlas trim");
     public bool ShowRenderingCategory => MatchesInspector("render lighting outline background color");
-    public bool ShowExportCategory => MatchesInspector("export png sheet json gif obj unity");
+    public bool ShowExportCategory => MatchesInspector("export png sheet json gif obj unity atlas trim maxrects");
     public bool EditCategoryExpanded { get => _editCategoryExpanded; set { if (SetField(ref _editCategoryExpanded, value)) SaveSettings(); } }
     public bool CameraCategoryExpanded { get => _cameraCategoryExpanded; set { if (SetField(ref _cameraCategoryExpanded, value)) SaveSettings(); } }
     public bool AnimationCategoryExpanded { get => _animationCategoryExpanded; set { if (SetField(ref _animationCategoryExpanded, value)) SaveSettings(); } }
@@ -565,7 +585,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     public void AddCurrentColorToPalette()
     {
         if (_document is null) { StatusText = "Create or load a project before editing its palette."; return; }
-        AvaloniaColor color = new(255, EditColor.R, EditColor.G, EditColor.B);
+        AvaloniaColor color = EditColor;
         if (ProjectPalette.Contains(color)) { StatusText = "That color is already in the project palette."; return; }
         if (ProjectPalette.Count >= 32) { StatusText = "The project palette is limited to 32 colors."; return; }
         ProjectPalette.Add(color);
@@ -637,6 +657,10 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     }
 
     public bool CanExport => _mesh is not null && _renderLayout is not null;
+    public bool CanExportAnimation => CanExport && (HasMultipleFrames || HasAnimationAxis);
+    public bool CanPrimaryExport => SelectedExportMode is ExportWorkflowMode.AnimatedGif or ExportWorkflowMode.AnimationSheet
+        ? CanExportAnimation
+        : CanExport;
 
     public IReadOnlyList<RecentImportSettings> RecentImports
     {
@@ -800,6 +824,41 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     public bool IsAnimationActive => _animationPreviewPlaying && HasAnimationAxis;
     public bool AnimationPreviewPlaying => _animationPreviewPlaying;
     public string AnimationPlayPauseLabel => _animationPreviewPlaying ? "Pause preview" : "Play preview";
+    public int FrameCount => Math.Max(1, _projectFrames.Count);
+    public int FrameLastIndex => FrameCount - 1;
+    public int CurrentFrameIndex
+    {
+        get => _currentFrameIndex;
+        set => SelectTimelineFrame(Math.Clamp(value, 0, FrameLastIndex));
+    }
+    public int CurrentFrameNumber => _currentFrameIndex + 1;
+    public bool HasMultipleFrames => _projectFrames.Count > 1;
+    public bool TimelinePlaying => _timelinePlaying;
+    public string TimelinePlayPauseLabel => _timelinePlaying ? "Pause timeline" : "Play timeline";
+    public string CurrentFrameSummary => _projectFrames.Count == 0
+        ? "Frame 1 / 1 · 100 ms"
+        : $"Frame {CurrentFrameNumber} / {FrameCount} · {_projectFrames[_currentFrameIndex].Name} · {_projectFrames[_currentFrameIndex].DurationMilliseconds} ms";
+
+    public void ToggleTimelinePlayback()
+    {
+        if (!HasMultipleFrames)
+        {
+            StatusText = "Import an animation with at least two frames first.";
+            return;
+        }
+
+        _timelinePlaying = !_timelinePlaying;
+        _timelineElapsedMilliseconds = 0d;
+        OnPropertyChanged(nameof(TimelinePlaying));
+        OnPropertyChanged(nameof(TimelinePlayPauseLabel));
+        StatusText = _timelinePlaying ? "Timeline playing" : "Timeline paused";
+    }
+
+    public void SelectPreviousFrame() => CurrentFrameIndex =
+        _currentFrameIndex <= 0 ? FrameLastIndex : _currentFrameIndex - 1;
+
+    public void SelectNextFrame() => CurrentFrameIndex =
+        _currentFrameIndex >= FrameLastIndex ? 0 : _currentFrameIndex + 1;
 
     public void ToggleAnimationPreview()
     {
@@ -810,6 +869,11 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         }
 
         _animationPreviewPlaying = !_animationPreviewPlaying;
+        if (_animationPreviewPlaying)
+        {
+            _animationBaseRotation = _modelRotation;
+            _animationElapsedSeconds = 0d;
+        }
         NotifyAnimationPlaybackChanged();
         StatusText = _animationPreviewPlaying ? "Rotation preview playing" : "Rotation preview paused";
     }
@@ -945,12 +1009,98 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     public string LeftPath => GetSeparatePath(VoxelFace.Left);
     public string TopPath => GetSeparatePath(VoxelFace.Top);
     public string BottomPath => GetSeparatePath(VoxelFace.Bottom);
+    public int AssignedAnimationFaceCount => _animatedFaceSources.Count;
+    public bool CanImportAssignedAnimation => AssignedAnimationFaceCount > 0;
+    public string AssignedAnimationSummary => AssignedAnimationFaceCount == 0
+        ? "No animated faces assigned"
+        : $"{AssignedAnimationFaceCount} animated face(s) assigned";
+
+    /// <summary>Gets or sets the X length used only when selected views do not observe X.</summary>
+    public int UnobservedXLength
+    {
+        get => _unobservedXLength;
+        set => SetField(ref _unobservedXLength, Math.Clamp(value, 1, 1024));
+    }
+
+    /// <summary>Gets or sets the Y length used only when selected views do not observe Y.</summary>
+    public int UnobservedYLength
+    {
+        get => _unobservedYLength;
+        set => SetField(ref _unobservedYLength, Math.Clamp(value, 1, 1024));
+    }
+
+    /// <summary>Gets or sets the Z length used only when selected views do not observe Z.</summary>
+    public int UnobservedZLength
+    {
+        get => _unobservedZLength;
+        set => SetField(ref _unobservedZLength, Math.Clamp(value, 1, 1024));
+    }
 
     public Task LoadHorizontalSheetAsync(string path) =>
         RunInspectionAsync(() => _importer.InspectHorizontalSheet(path), null, default);
 
     public Task LoadSeparateFilesAsync(IEnumerable<string> paths) =>
         RunInspectionAsync(() => _importer.InspectSeparate(paths), null, default);
+
+    public void SetAnimatedFaceSource(VoxelFace face, string pngPath, string jsonPath)
+    {
+        _animatedFaceSources[face] = new AsepriteFaceAnimationSource(pngPath, jsonPath);
+        OnPropertyChanged(nameof(AssignedAnimationFaceCount));
+        OnPropertyChanged(nameof(CanImportAssignedAnimation));
+        OnPropertyChanged(nameof(AssignedAnimationSummary));
+        StatusText = $"Assigned animated {face}: {Path.GetFileName(pngPath)} + {Path.GetFileName(jsonPath)}";
+    }
+
+    public Task<bool> ImportAssignedAnimationAsync(CancellationToken cancellationToken = default) =>
+        LoadAsepriteAnimationAsync(new Dictionary<VoxelFace, AsepriteFaceAnimationSource>(_animatedFaceSources), cancellationToken);
+
+    /// <summary>Imports synchronized Aseprite face animations into independently editable frames.</summary>
+    public async Task<bool> LoadAsepriteAnimationAsync(
+        IReadOnlyDictionary<VoxelFace, AsepriteFaceAnimationSource> sources,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            StatusText = "Importing synchronized Aseprite animation...";
+            VoxelReconstructionOptions options = new(UnobservedXLength, UnobservedYLength, UnobservedZLength);
+            (OrthographicAnimation Animation, PixelVoxelProjectFrame[] Frames, VoxelMeshBuildResult[] Meshes) result =
+                await Task.Run(() =>
+                {
+                    OrthographicAnimation animation = _animationImporter.Import(sources);
+                    PixelVoxelProjectFrame[] frames = new PixelVoxelProjectFrame[animation.Frames.Count];
+                    VoxelMeshBuildResult[] meshes = new VoxelMeshBuildResult[animation.Frames.Count];
+                    for (int index = 0; index < animation.Frames.Count; index++)
+                    {
+                        cancellationToken.ThrowIfCancellationRequested();
+                        VoxelDocument document = _reconstructor.Reconstruct(animation.Frames[index], options);
+                        meshes[index] = _mesher.Build(document, cancellationToken);
+                        frames[index] = new PixelVoxelProjectFrame(
+                            animation.FrameNames[index],
+                            animation.DurationsMilliseconds[index],
+                            document,
+                            animation.Frames[index]);
+                    }
+                    return (animation, frames, meshes);
+                }, cancellationToken);
+
+            PixelVoxelProject project = new(result.Frames, 0, CaptureProjectSettings());
+            ReplaceProjectPalette([]);
+            ApplyLoadedFrames(project, result.Meshes, null);
+            StatusText = $"Imported {result.Frames.Length} synchronized animation frames";
+            ActiveWorkspace = WorkspaceMode.Animate;
+            return true;
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            StatusText = "Animation import cancelled.";
+            return false;
+        }
+        catch (Exception exception)
+        {
+            StatusText = $"Animation import failed: {exception.Message}";
+            return false;
+        }
+    }
 
     public void SetSeparatePath(VoxelFace face, string path)
     {
@@ -974,10 +1124,42 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         }
 
         SixViewImportDraft draft = _importDraft;
-        SixViewAlignment alignment = BuildCurrentAlignment();
+        SixViewAlignmentPreview preview = _alignmentPreview!;
         return RunImportAsync(
-            _ => _importer.ApplyAlignment(draft, alignment),
+            _ => new SixViewImportResult(
+                draft.SourcePath,
+                new OrthographicViewSet(preview.Views),
+                preview.Slots,
+                preview.Diagnostics
+                    .Where(item => item.Severity != ImportDiagnosticSeverity.Error)
+                    .Select(item => item.Message)),
             default);
+    }
+
+    /// <summary>Paints or erases one transformed source-mask pixel before reconstruction.</summary>
+    public void SetImportSourceMaskPixel(VoxelFace face, int x, int y, bool occupied)
+    {
+        if (_alignmentPreview is null || !_alignmentPreview.Views.TryGetValue(face, out OrthographicImage? image)) return;
+        Rgba32Color color = occupied
+            ? ResolveSourceMaskPaintColor(image, x, y)
+            : default;
+        _sourceMaskEdits[(face, x, y)] = color;
+        RefreshAlignmentPreview();
+    }
+
+    public void EraseSelectedImportConflicts()
+    {
+        if (_alignmentPreview is null || SelectedImportFaceSlot is null) return;
+        OrthographicViewSet views = new(_alignmentPreview.Views);
+        VoxelDocument provisional = _reconstructor.Reconstruct(views, CurrentReconstructionOptions());
+        VoxelReprojectionAnalysis analysis = new VoxelReprojectionAnalyzer().Analyze(
+            views, provisional, CurrentReconstructionOptions());
+        foreach (VoxelReprojectionConflict conflict in analysis.Conflicts.Where(item =>
+                     item.Face == SelectedImportFaceSlot.TargetFace && item.SourceOccupied))
+        {
+            _sourceMaskEdits[(conflict.Face, conflict.X, conflict.Y)] = default;
+        }
+        RefreshAlignmentPreview();
     }
 
     public Task ReimportAsync()
@@ -1107,13 +1289,15 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         if (_mesh is null || _renderLayout is null) { StatusText = "Load and reconstruct a model before exporting."; return; }
         try
         {
-            VoxelCameraState camera = _camera;
-            VoxelModelRotationState baseRotation = _modelRotation;
-            StatusText = "Rendering rotation animation sheet...";
-            SpriteExportResult result = await _spriteExportCoordinator.ExportRotationSheetAsync(path,
-                _animationFramesPerSecond, _animationSpeed, YawAnimationEnabled, PitchAnimationEnabled,
-                RollAnimationEnabled, camera, baseRotation, _mesh, _renderLayout, _renderStyle,
-                _exportTransparentBackground, cancellationToken);
+            StatusText = HasMultipleFrames ? "Rendering project timeline sheet..." : "Rendering rotation animation sheet...";
+            SpriteExportResult result = HasMultipleFrames
+                ? await _spriteExportCoordinator.ExportTimelineSheetAsync(
+                    path, GetTimelineRenderFrames(), _camera, _modelRotation,
+                    ResolveTimelineExportLayout(), _renderStyle, _exportTransparentBackground, cancellationToken)
+                : await _spriteExportCoordinator.ExportRotationSheetAsync(path,
+                    _animationFramesPerSecond, _animationSpeed, YawAnimationEnabled, PitchAnimationEnabled,
+                    RollAnimationEnabled, _camera, _modelRotation, _mesh, _renderLayout, _renderStyle,
+                    _exportTransparentBackground, cancellationToken);
             StatusText = $"Exported {result.FrameCount} animation frames: {Path.GetFileName(result.PngPath)} + JSON";
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
@@ -1130,10 +1314,14 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             VoxelCameraState camera = _camera;
             VoxelModelRotationState baseRotation = _modelRotation;
             StatusText = "Rendering animated GIF...";
-            SpriteFrame[] frames = await _spriteExportCoordinator.RenderRotationFramesAsync(
-                _animationFramesPerSecond, _animationSpeed, YawAnimationEnabled, PitchAnimationEnabled,
-                RollAnimationEnabled, camera, baseRotation, _mesh, _renderLayout, _renderStyle,
-                _exportTransparentBackground, cancellationToken);
+            SpriteFrame[] frames = HasMultipleFrames
+                ? await _spriteExportCoordinator.RenderTimelineFramesAsync(
+                    GetTimelineRenderFrames(), camera, baseRotation, ResolveTimelineExportLayout(),
+                    _renderStyle, _exportTransparentBackground, cancellationToken)
+                : await _spriteExportCoordinator.RenderRotationFramesAsync(
+                    _animationFramesPerSecond, _animationSpeed, YawAnimationEnabled, PitchAnimationEnabled,
+                    RollAnimationEnabled, camera, baseRotation, _mesh, _renderLayout, _renderStyle,
+                    _exportTransparentBackground, cancellationToken);
             GifExportResult result = await _gifExporter.ExportAsync(
                 path, frames, cancellationToken, _gifExportResizePercent);
             StatusText = result.WasQuantized
@@ -1240,12 +1428,10 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         if (axis == RotationGizmoAxis.None || !float.IsFinite(totalDegrees)) return;
         _modelRotation = axis switch
         {
-            RotationGizmoAxis.LocalX => new VoxelModelRotationState(
-                start.YawDegrees, start.PitchDegrees + totalDegrees, start.RollDegrees),
-            RotationGizmoAxis.LocalY => new VoxelModelRotationState(
-                start.YawDegrees + totalDegrees, start.PitchDegrees, start.RollDegrees),
-            RotationGizmoAxis.LocalZ or RotationGizmoAxis.View => new VoxelModelRotationState(
-                start.YawDegrees, start.PitchDegrees, start.RollDegrees + totalDegrees),
+            RotationGizmoAxis.LocalX => start.RotateFixedLocal(0f, totalDegrees, 0f),
+            RotationGizmoAxis.LocalY => start.RotateFixedLocal(totalDegrees, 0f, 0f),
+            RotationGizmoAxis.LocalZ => start.RotateFixedLocal(0f, 0f, totalDegrees),
+            RotationGizmoAxis.View => RotateAroundViewAxis(start, totalDegrees),
             _ => start,
         };
         SyncModelRotationDisplay();
@@ -1329,25 +1515,78 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 
     public void AdvanceAnimations(double elapsedSeconds)
     {
+        AdvanceTimeline(elapsedSeconds);
         if (!IsAnimationActive || elapsedSeconds <= 0d) return;
-        float delta = _animationSpeed * (float)Math.Min(elapsedSeconds, 0.1d);
-
-        if (YawAnimationEnabled)
-        {
-            _modelRotation = _modelRotation.RotateLocal(Vector3.UnitY, delta);
-        }
-
-        if (PitchAnimationEnabled)
-        {
-            _modelRotation = _modelRotation.RotateLocal(Vector3.UnitX, delta);
-        }
-
-        if (RollAnimationEnabled)
-        {
-            _modelRotation = _modelRotation.RotateLocal(Vector3.UnitZ, delta);
-        }
+        _animationElapsedSeconds += Math.Min(elapsedSeconds, 0.1d);
+        float angle = VoxelCameraMotion.WrapAngle(_animationSpeed * (float)_animationElapsedSeconds);
+        _modelRotation = _animationBaseRotation.RotateFixedLocal(
+            YawAnimationEnabled ? angle : 0f,
+            PitchAnimationEnabled ? angle : 0f,
+            RollAnimationEnabled ? angle : 0f);
 
         SyncModelRotationDisplay();
+    }
+
+    public async Task ExportTrimmedAtlasAsync(string path, CancellationToken cancellationToken = default)
+    {
+        if (_mesh is null || _renderLayout is null) { StatusText = "Load and reconstruct a model before exporting."; return; }
+        try
+        {
+            StatusText = "Rendering and packing trimmed MaxRects atlas...";
+            SpriteFrame[] frames = HasMultipleFrames || !HasAnimationAxis
+                ? await _spriteExportCoordinator.RenderTimelineFramesAsync(
+                    GetTimelineRenderFrames(), _camera, _modelRotation, ResolveTimelineExportLayout(),
+                    _renderStyle, transparentBackground: true, cancellationToken)
+                : await _spriteExportCoordinator.RenderRotationFramesAsync(
+                    _animationFramesPerSecond, _animationSpeed, YawAnimationEnabled, PitchAnimationEnabled,
+                    RollAnimationEnabled, _camera, _modelRotation, _mesh, _renderLayout, _renderStyle,
+                    transparentBackground: true, cancellationToken);
+            SpriteExportResult result = await new TrimmedAtlasExporter(new PngPixelWriter()).ExportAsync(
+                new TrimmedAtlasExportRequest(path, frames, new TrimmedAtlasOptions()), cancellationToken);
+            StatusText = $"Exported {result.FrameCount} trimmed frames in {result.Width}x{result.Height} atlas + JSON";
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            StatusText = $"Atlas export failed: {exception.Message}";
+        }
+    }
+
+    private TimelineRenderFrame[] GetTimelineRenderFrames() => _projectFrames.Select(frame =>
+        new TimelineRenderFrame(
+            frame.Name,
+            frame.DurationMilliseconds,
+            frame.Mesh ?? throw new InvalidOperationException(
+                $"Timeline frame '{frame.Name}' is still rebuilding. Wait for editing to finish and export again.")))
+        .ToArray();
+
+    private PixelRenderLayout ResolveTimelineExportLayout()
+    {
+        int width = _projectFrames.Max(frame => frame.Document.Storage.Dimensions.Width);
+        int height = _projectFrames.Max(frame => frame.Document.Storage.Dimensions.Height);
+        int depth = _projectFrames.Max(frame => frame.Document.Storage.Dimensions.Depth);
+        int sourceWidth = Math.Max(1, _projectFrames
+            .SelectMany(frame => frame.SourceViews?.Views ?? [])
+            .Select(pair => pair.Value.Width)
+            .DefaultIfEmpty(_renderLayout?.Width ?? 1)
+            .Max());
+        int sourceHeight = Math.Max(1, _projectFrames
+            .SelectMany(frame => frame.SourceViews?.Views ?? [])
+            .Select(pair => pair.Value.Height)
+            .DefaultIfEmpty(_renderLayout?.Height ?? 1)
+            .Max());
+        return _layoutResolver.Resolve(new VoxelDimensions(width, height, depth), sourceWidth, sourceHeight);
+    }
+
+    private void AdvanceTimeline(double elapsedSeconds)
+    {
+        if (!_timelinePlaying || !HasMultipleFrames || elapsedSeconds <= 0d) return;
+        _timelineElapsedMilliseconds += elapsedSeconds * 1000d;
+        int guard = _projectFrames.Count;
+        while (_timelineElapsedMilliseconds >= _projectFrames[_currentFrameIndex].DurationMilliseconds && guard-- > 0)
+        {
+            _timelineElapsedMilliseconds -= _projectFrames[_currentFrameIndex].DurationMilliseconds;
+            SelectTimelineFrame((_currentFrameIndex + 1) % _projectFrames.Count, preservePlayback: true);
+        }
     }
 
     private void StopRotationAnimations()
@@ -1358,17 +1597,28 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         _verticalAnimationEnabled = false;
         _rollAnimationEnabled = false;
         _animationPreviewPlaying = false;
+        _animationBaseRotation = _modelRotation;
+        _animationElapsedSeconds = 0d;
         if (!changed) return;
         OnPropertyChanged(nameof(YawAnimationEnabled));
         OnPropertyChanged(nameof(PitchAnimationEnabled));
         OnPropertyChanged(nameof(RollAnimationEnabled));
         OnPropertyChanged(nameof(HasAnimationAxis));
+        OnPropertyChanged(nameof(CanExportAnimation));
+        OnPropertyChanged(nameof(CanPrimaryExport));
         NotifyAnimationPlaybackChanged();
     }
 
     private void AnimationAxisSelectionChanged()
     {
+        if (_animationPreviewPlaying)
+        {
+            _animationBaseRotation = _modelRotation;
+            _animationElapsedSeconds = 0d;
+        }
         OnPropertyChanged(nameof(HasAnimationAxis));
+        OnPropertyChanged(nameof(CanExportAnimation));
+        OnPropertyChanged(nameof(CanPrimaryExport));
         if (!HasAnimationAxis && _animationPreviewPlaying)
         {
             _animationPreviewPlaying = false;
@@ -1405,7 +1655,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 
     public void ActivateCpuFallback(string message)
     {
-        IsCpuFallbackActive = true;
+        _openGlUnavailable = true;
+        UpdateRenderBackendForMesh();
         StatusText = $"OpenGL unavailable; CPU fallback active. {message}";
         RenderCurrentScene();
     }
@@ -1452,15 +1703,23 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         try
         {
             StatusText = "Saving Pixel2Voxel project...";
+            PixelVoxelProjectFrame[] frames = _projectFrames.Count == 0
+                ? [new PixelVoxelProjectFrame("frame_0000", 100, new VoxelDocument(_document.Storage), _sourceViews)]
+                : _projectFrames.Select(frame => new PixelVoxelProjectFrame(
+                    frame.Name,
+                    frame.DurationMilliseconds,
+                    new VoxelDocument(frame.Document.Storage),
+                    frame.SourceViews)).ToArray();
             PixelVoxelProject project = new(
-                new VoxelDocument(_document.Storage),
-                _sourceViews,
+                frames,
+                Math.Clamp(_currentFrameIndex, 0, frames.Length - 1),
                 CaptureProjectSettings(),
                 ProjectPalette.Select(ToRgba));
             await _projectSerializer.SaveAsync(destination, project, cancellationToken);
             _projectPath = Path.GetFullPath(destination);
             _editHistory.MarkClean();
             _paletteDirty = false;
+            _projectSettingsDirty = false;
             OnPropertyChanged(nameof(IsProjectDirty));
             OnPropertyChanged(nameof(ProjectPath));
             OnPropertyChanged(nameof(WindowTitle));
@@ -1488,19 +1747,17 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         {
             StatusText = "Loading Pixel2Voxel project...";
             PixelVoxelProject project = await _projectSerializer.LoadAsync(path, cancellationToken);
-            VoxelMeshBuildResult meshResult = await Task.Run(
-                () => _mesher.Build(project.Document, cancellationToken),
+            VoxelMeshBuildResult[] meshResults = await Task.Run(
+                () => project.Frames.Select(frame => _mesher.Build(frame.Document, cancellationToken)).ToArray(),
                 cancellationToken);
             ApplyProjectSettings(project.Settings);
             ReplaceProjectPalette(project.Palette);
-            ApplyLoadedDocument(
-                project.Document,
-                project.SourceViews,
-                meshResult,
-                Path.GetFullPath(path),
-                $"Project: {Path.GetFileName(path)}");
+            ApplyLoadedFrames(project, meshResults, Path.GetFullPath(path));
             _editHistory.MarkClean();
             _paletteDirty = false;
+            _projectSettingsDirty = false;
+            OnPropertyChanged(nameof(IsProjectDirty));
+            OnPropertyChanged(nameof(WindowTitle));
             return true;
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -1531,7 +1788,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             if (_document?.Storage.TryGetCell(pick.Coordinate, out VoxelCell? cell) == true &&
                 cell!.TryGetColor(pick.Face, out Rgba32Color sampled))
             {
-                EditColor = new AvaloniaColor(255, sampled.Red, sampled.Green, sampled.Blue);
+                EditColor = new AvaloniaColor(sampled.Alpha, sampled.Red, sampled.Green, sampled.Blue);
                 StatusText = $"Sampled {sampled.Red:X2}{sampled.Green:X2}{sampled.Blue:X2} from {pick.Coordinate} {pick.Face}";
             }
             return false;
@@ -1608,14 +1865,16 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 
     public void Undo()
     {
-        if (_document is null || !_editHistory.Undo(_document)) return;
+        if (_document is null || !_editHistory.Undo(ResolveFrameDocument, out int frameIndex)) return;
+        SelectTimelineFrame(frameIndex);
         StatusText = "Undo";
         ScheduleMeshRebuild();
     }
 
     public void Redo()
     {
-        if (_document is null || !_editHistory.Redo(_document)) return;
+        if (_document is null || !_editHistory.Redo(ResolveFrameDocument, out int frameIndex)) return;
+        SelectTimelineFrame(frameIndex);
         StatusText = "Redo";
         ScheduleMeshRebuild();
     }
@@ -1781,7 +2040,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     private void CommitEdit(IVoxelEditCommand command)
     {
         if (_document is null) return;
-        if (!_editHistory.Execute(_document, command)) return;
+        if (!_editHistory.Execute(_document, command, _currentFrameIndex)) return;
         StatusText = command.Description;
         ScheduleMeshRebuild();
     }
@@ -1812,7 +2071,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             .ToArray();
         if (_editHistory.Execute(
             _document,
-            new VoxelChangeSet("Paint voxel stroke", dimensions, dimensions, changes)))
+            new VoxelChangeSet("Paint voxel stroke", dimensions, dimensions, changes),
+            _currentFrameIndex))
         {
             StatusText = "Paint voxel stroke";
             ScheduleMeshRebuild();
@@ -1854,11 +2114,16 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             }
 
             _mesh = result.Mesh;
+            if (_projectFrames.Count > 0 && ReferenceEquals(_projectFrames[_currentFrameIndex].Document, source))
+            {
+                _projectFrames[_currentFrameIndex].Mesh = result.Mesh;
+            }
+            UpdateRenderBackendForMesh();
             RefreshEditorOverlay(render: false);
             if (!result.IsSuccess)
             {
                 _renderLayout = null;
-                OnPropertyChanged(nameof(CanExport));
+                NotifyExportAvailabilityChanged();
                 _renderTransform = null;
                 ViewportBitmap = null;
                 ViewportMessage = result.Diagnostic ?? "The render cache could not be created.";
@@ -1871,7 +2136,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
                 dimensions,
                 Math.Max(1, _sourcePixelWidth),
                 Math.Max(1, _sourcePixelHeight));
-            OnPropertyChanged(nameof(CanExport));
+            NotifyExportAvailabilityChanged();
             ViewportMessage = string.Empty;
             RenderCurrentScene();
         }
@@ -1889,12 +2154,23 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         OrthographicViewSet? sourceViews,
         VoxelMeshBuildResult meshResult,
         string? projectPath,
-        string summary)
+        string summary,
+        bool resetTimeline = true)
     {
         _meshCancellation?.Cancel();
         _document = document;
         _sourceViews = sourceViews;
         _mesh = meshResult.Mesh;
+        UpdateRenderBackendForMesh();
+        if (resetTimeline)
+        {
+            _projectFrames.Clear();
+            _projectFrames.Add(new ProjectFrameState("frame_0000", 100, document, sourceViews, meshResult.Mesh));
+            _currentFrameIndex = 0;
+            _timelinePlaying = false;
+            _timelineElapsedMilliseconds = 0d;
+            NotifyTimelineChanged();
+        }
         _projectPath = projectPath;
         _sourcePixelWidth = sourceViews?.Views.Max(pair => pair.Value.Width) ?? document.Storage.Dimensions.Width;
         _sourcePixelHeight = sourceViews?.Views.Max(pair => pair.Value.Height) ?? document.Storage.Dimensions.Height;
@@ -1916,7 +2192,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             $"Exposed faces: {meshResult.ActualExposedFaceCount:N0}";
         OnPropertyChanged(nameof(CurrentDocument));
         OnPropertyChanged(nameof(HasDocument));
-        OnPropertyChanged(nameof(CanExport));
+        NotifyExportAvailabilityChanged();
         OnPropertyChanged(nameof(ProjectPath));
         OnPropertyChanged(nameof(WindowTitle));
         ActiveWorkspace = WorkspaceMode.Edit;
@@ -1936,11 +2212,97 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         RenderCurrentScene();
     }
 
+    private VoxelDocument ResolveFrameDocument(int frameIndex)
+    {
+        if ((uint)frameIndex >= (uint)_projectFrames.Count)
+            throw new InvalidOperationException($"Timeline frame {frameIndex} is unavailable.");
+        return _projectFrames[frameIndex].Document;
+    }
+
+    private void ApplyLoadedFrames(
+        PixelVoxelProject project,
+        IReadOnlyList<VoxelMeshBuildResult> meshResults,
+        string? projectPath)
+    {
+        if (project.Frames.Count != meshResults.Count)
+            throw new InvalidOperationException("Loaded animation frame and mesh counts differ.");
+        _projectFrames.Clear();
+        for (int index = 0; index < project.Frames.Count; index++)
+        {
+            PixelVoxelProjectFrame frame = project.Frames[index];
+            _projectFrames.Add(new ProjectFrameState(
+                frame.Name, frame.DurationMilliseconds, frame.Document, frame.SourceViews, meshResults[index].Mesh));
+        }
+        _currentFrameIndex = project.CurrentFrameIndex;
+        _timelinePlaying = false;
+        _timelineElapsedMilliseconds = 0d;
+        PixelVoxelProjectFrame current = project.Frames[_currentFrameIndex];
+        ApplyLoadedDocument(
+            current.Document,
+            current.SourceViews,
+            meshResults[_currentFrameIndex],
+            projectPath,
+            projectPath is null
+                ? $"Animation import · {project.Frames.Count} frame(s)"
+                : $"Project: {Path.GetFileName(projectPath)} · {project.Frames.Count} frame(s)",
+            resetTimeline: false);
+        NotifyTimelineChanged();
+    }
+
+    private void SelectTimelineFrame(int index, bool preservePlayback = false)
+    {
+        if (_projectFrames.Count == 0 || (uint)index >= (uint)_projectFrames.Count || index == _currentFrameIndex) return;
+        _meshCancellation?.Cancel();
+        _currentFrameIndex = index;
+        ProjectFrameState frame = _projectFrames[index];
+        _document = frame.Document;
+        _sourceViews = frame.SourceViews;
+        _mesh = frame.Mesh;
+        _sourcePixelWidth = frame.SourceViews?.Views.Max(pair => pair.Value.Width) ?? frame.Document.Storage.Dimensions.Width;
+        _sourcePixelHeight = frame.SourceViews?.Views.Max(pair => pair.Value.Height) ?? frame.Document.Storage.Dimensions.Height;
+        VoxelDimensions dimensions = frame.Document.Storage.Dimensions;
+        ResizeWidth = dimensions.Width;
+        ResizeHeight = dimensions.Height;
+        ResizeDepth = dimensions.Depth;
+        _renderLayout = _layoutResolver.Resolve(dimensions, Math.Max(1, _sourcePixelWidth), Math.Max(1, _sourcePixelHeight));
+        ClearSelection();
+        UpdateRenderBackendForMesh();
+        RefreshEditorOverlay(render: false);
+        if (!preservePlayback) _timelineElapsedMilliseconds = 0d;
+        NotifyTimelineChanged();
+        OnPropertyChanged(nameof(CurrentDocument));
+        OnPropertyChanged(nameof(CurrentMesh));
+        NotifyExportAvailabilityChanged();
+        RenderCurrentScene();
+        StatusText = $"Selected {CurrentFrameSummary}";
+    }
+
+    private void NotifyTimelineChanged()
+    {
+        OnPropertyChanged(nameof(FrameCount));
+        OnPropertyChanged(nameof(FrameLastIndex));
+        OnPropertyChanged(nameof(CurrentFrameIndex));
+        OnPropertyChanged(nameof(CurrentFrameNumber));
+        OnPropertyChanged(nameof(HasMultipleFrames));
+        OnPropertyChanged(nameof(CanExportAnimation));
+        OnPropertyChanged(nameof(CanPrimaryExport));
+        OnPropertyChanged(nameof(TimelinePlaying));
+        OnPropertyChanged(nameof(TimelinePlayPauseLabel));
+        OnPropertyChanged(nameof(CurrentFrameSummary));
+    }
+
+    private void NotifyExportAvailabilityChanged()
+    {
+        OnPropertyChanged(nameof(CanExport));
+        OnPropertyChanged(nameof(CanExportAnimation));
+        OnPropertyChanged(nameof(CanPrimaryExport));
+    }
+
     private void ReplaceProjectPalette(IEnumerable<Rgba32Color> colors)
     {
         ProjectPalette.Clear();
         foreach (Rgba32Color color in colors.Take(32))
-            ProjectPalette.Add(new AvaloniaColor(255, color.Red, color.Green, color.Blue));
+            ProjectPalette.Add(new AvaloniaColor(color.Alpha, color.Red, color.Green, color.Blue));
         _paletteDirty = false;
         OnPropertyChanged(nameof(ProjectPalette));
         OnPropertyChanged(nameof(IsProjectDirty));
@@ -1966,7 +2328,11 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             _exportDirectionCount,
             _exportTrueIsometric,
             _exportTransparentBackground,
-            _modelRotation.RollDegrees);
+            _modelRotation.RollDegrees,
+            _modelRotation.Orientation.X,
+            _modelRotation.Orientation.Y,
+            _modelRotation.Orientation.Z,
+            _modelRotation.Orientation.W);
 
     private void ApplyProjectSettings(PixelVoxelProjectSettings settings)
     {
@@ -1988,10 +2354,11 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         _rawModelYawDegrees = FiniteOrDefault(settings.ModelYaw, 0f);
         _rawModelPitchDegrees = FiniteOrDefault(settings.ModelPitch, 0f);
         _rawModelRollDegrees = FiniteOrDefault(settings.ModelRoll, 0f);
-        _modelRotation = new VoxelModelRotationState(
-            _rawModelYawDegrees,
-            _rawModelPitchDegrees,
-            _rawModelRollDegrees);
+        _modelRotation = TryGetPersistedOrientation(settings, out System.Numerics.Quaternion orientation)
+            ? VoxelModelRotationState.FromOrientation(
+                _rawModelYawDegrees, _rawModelPitchDegrees, _rawModelRollDegrees, orientation)
+            : new VoxelModelRotationState(
+                _rawModelYawDegrees, _rawModelPitchDegrees, _rawModelRollDegrees);
         _backgroundColor = new AvaloniaColor(255, settings.BackgroundColor.Red, settings.BackgroundColor.Green, settings.BackgroundColor.Blue);
         _lightingEnabled = settings.LightingEnabled;
         _lightAzimuth = Math.Clamp(FiniteOrDefault(settings.LightAzimuth, -45f), -180f, 180f);
@@ -2025,6 +2392,34 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     {
         OnPropertyChanged(nameof(CanUndo));
         OnPropertyChanged(nameof(CanRedo));
+        OnPropertyChanged(nameof(IsProjectDirty));
+        OnPropertyChanged(nameof(WindowTitle));
+    }
+
+    private static bool TryGetPersistedOrientation(
+        PixelVoxelProjectSettings settings,
+        out System.Numerics.Quaternion orientation)
+    {
+        orientation = default;
+        if (settings.ModelOrientationX is not float x ||
+            settings.ModelOrientationY is not float y ||
+            settings.ModelOrientationZ is not float z ||
+            settings.ModelOrientationW is not float w ||
+            !float.IsFinite(x) || !float.IsFinite(y) || !float.IsFinite(z) || !float.IsFinite(w))
+        {
+            return false;
+        }
+
+        orientation = new System.Numerics.Quaternion(x, y, z, w);
+        if (orientation.LengthSquared() < 0.000001f) return false;
+        orientation = System.Numerics.Quaternion.Normalize(orientation);
+        return true;
+    }
+
+    private void MarkProjectSettingsDirty()
+    {
+        if (_document is null || _projectSettingsDirty) return;
+        _projectSettingsDirty = true;
         OnPropertyChanged(nameof(IsProjectDirty));
         OnPropertyChanged(nameof(WindowTitle));
     }
@@ -2088,6 +2483,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         IReadOnlyList<RecentFaceAlignmentSettings>? restoredAlignment)
     {
         _importDraft = draft;
+        _sourceMaskEdits.Clear();
         SixViewAlignment defaults = _importer.CreateDefaultAlignment(draft);
         _suppressImportPreviewRefresh = true;
         try
@@ -2149,8 +2545,52 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     private void RefreshAlignmentPreview()
     {
         if (_suppressImportPreviewRefresh || _importDraft is null) return;
-        _alignmentPreview = _importer.PreviewAlignment(_importDraft, BuildCurrentAlignment());
+        SixViewAlignmentPreview generated = _importer.PreviewAlignment(_importDraft, BuildCurrentAlignment());
+        Dictionary<VoxelFace, OrthographicImage> editedViews = generated.Views.ToDictionary(pair => pair.Key, pair => pair.Value);
+        foreach (((VoxelFace face, int x, int y), Rgba32Color color) in _sourceMaskEdits)
+        {
+            if (editedViews.TryGetValue(face, out OrthographicImage? image) &&
+                (uint)x < (uint)image.Width && (uint)y < (uint)image.Height)
+            {
+                editedViews[face] = image.WithPixel(x, y, color);
+            }
+        }
+        List<ImportDiagnostic> editedDiagnostics = generated.Diagnostics.ToList();
+        SixViewSlotInfo[] editedSlots = generated.Slots.Select(slot =>
+        {
+            OrthographicImage image = editedViews[slot.Face];
+            int visible = CountVisiblePixels(image);
+            if (visible == 0)
+            {
+                ImportFaceSlotViewModel card = ImportFaceSlots.Single(item => item.TargetFace == slot.Face);
+                editedDiagnostics.Add(new ImportDiagnostic(
+                    "empty-edited-mask", ImportDiagnosticSeverity.Error, card.SourceSlotIndex,
+                    slot.Face, null, null, $"The edited {slot.Face} mask contains no visible pixels."));
+            }
+            return slot with { OpaquePixelCount = visible };
+        }).ToArray();
+        _alignmentPreview = new SixViewAlignmentPreview(editedViews, editedSlots, editedDiagnostics);
         CanApplyImport = _alignmentPreview.CanApply;
+
+        VoxelReprojectionAnalysis? conflicts = null;
+        if (CanApplyImport)
+        {
+            try
+            {
+                OrthographicViewSet previewViews = new(_alignmentPreview.Views);
+                VoxelDocument provisional = _reconstructor.Reconstruct(previewViews, CurrentReconstructionOptions());
+                conflicts = new VoxelReprojectionAnalyzer().Analyze(
+                    previewViews, provisional, CurrentReconstructionOptions());
+            }
+            catch (Exception exception) when (exception is ArgumentException or InvalidOperationException or OverflowException)
+            {
+                editedDiagnostics.Add(new ImportDiagnostic(
+                    "reprojection-failed", ImportDiagnosticSeverity.Error, -1, null, null, null,
+                    $"Reprojection validation failed: {exception.Message}"));
+                _alignmentPreview = new SixViewAlignmentPreview(editedViews, editedSlots, editedDiagnostics);
+                CanApplyImport = false;
+            }
+        }
 
         foreach (ImportFaceSlotViewModel card in ImportFaceSlots)
         {
@@ -2163,14 +2603,19 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             _alignmentPreview.Views.TryGetValue(card.TargetFace, out OrthographicImage? image);
             SixViewSlotInfo? statistics = _alignmentPreview.Slots.FirstOrDefault(
                 item => item.Face == card.TargetFace);
+            int conflictCount = conflicts?.GetConflictCount(card.TargetFace) ?? 0;
             string text = diagnostic?.Message ??
                 (statistics is null
                     ? "No transformed view"
-                    : $"Ready · {statistics.OpaquePixelCount:N0} opaque");
+                    : conflictCount > 0
+                        ? $"{conflictCount:N0} silhouette conflict(s) · edit source mask"
+                        : $"Ready · {statistics.OpaquePixelCount:N0} visible");
             card.SetPreview(
-                image is null ? null : CreateImportPreviewBitmap(image),
+                image is null ? null : TryCreateImportPreviewBitmap(
+                    image,
+                    conflicts?.Conflicts.Where(item => item.Face == card.TargetFace)),
                 text,
-                diagnostic?.Severity);
+                diagnostic?.Severity ?? (conflictCount > 0 ? ImportDiagnosticSeverity.Warning : null));
         }
 
         string diagnosticLines = _alignmentPreview.Diagnostics.Count == 0
@@ -2181,9 +2626,40 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
                     $"[{item.Severity}] {item.Message}"));
         ImportSummary =
             $"Draft: {Path.GetFileName(_importDraft.SourcePath)}{Environment.NewLine}" +
-            $"Sources: {_importDraft.Slots.Count}/6{Environment.NewLine}" +
+            $"Sources: {_importDraft.Slots.Count} selected face(s){Environment.NewLine}" +
             $"Apply ready: {CanApplyImport}{Environment.NewLine}{Environment.NewLine}" +
+            $"Reprojection conflicts: {conflicts?.ConflictCount ?? 0:N0}{Environment.NewLine}{Environment.NewLine}" +
             diagnosticLines;
+    }
+
+    private VoxelReconstructionOptions CurrentReconstructionOptions() =>
+        new(UnobservedXLength, UnobservedYLength, UnobservedZLength);
+
+    private static int CountVisiblePixels(OrthographicImage image)
+    {
+        int count = 0;
+        foreach (Rgba32Color pixel in image.Pixels.Span)
+        {
+            if (pixel.Alpha > 0) count++;
+        }
+        return count;
+    }
+
+    private static Rgba32Color ResolveSourceMaskPaintColor(OrthographicImage image, int x, int y)
+    {
+        if ((uint)x >= (uint)image.Width || (uint)y >= (uint)image.Height) return new Rgba32Color(255, 255, 255, 255);
+        Rgba32Color existing = image.GetPixel(x, y);
+        if (existing.Alpha > 0) return existing;
+        for (int radius = 1; radius <= 2; radius++)
+        {
+            for (int sampleY = Math.Max(0, y - radius); sampleY <= Math.Min(image.Height - 1, y + radius); sampleY++)
+            for (int sampleX = Math.Max(0, x - radius); sampleX <= Math.Min(image.Width - 1, x + radius); sampleX++)
+            {
+                Rgba32Color sample = image.GetPixel(sampleX, sampleY);
+                if (sample.Alpha > 0) return sample;
+            }
+        }
+        return new Rgba32Color(255, 255, 255, 255);
     }
 
     private SixViewAlignment BuildCurrentAlignment() =>
@@ -2270,7 +2746,11 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         _importCancellation = CancellationTokenSource.CreateLinkedTokenSource(token);
         CancellationToken cancellationToken = _importCancellation.Token;
         StatusText = $"Importing revision {revision}...";
-        ViewportMessage = "Reconstructing six-view pixels...";
+        ViewportMessage = "Reconstructing selected orthographic views...";
+        VoxelReconstructionOptions reconstructionOptions = new(
+            UnobservedXLength,
+            UnobservedYLength,
+            UnobservedZLength);
 
         try
         {
@@ -2278,7 +2758,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 SixViewImportResult imported = import(cancellationToken);
-                VoxelDocument document = _reconstructor.Reconstruct(imported.Views);
+                VoxelDocument document = _reconstructor.Reconstruct(imported.Views, reconstructionOptions);
                 VoxelMeshBuildResult meshResult = _mesher.Build(document, cancellationToken);
                 return new ImportWorkResult(imported, document, meshResult);
             }, cancellationToken);
@@ -2304,6 +2784,14 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         ReplaceProjectPalette([]);
         _sourceViews = result.Import.Views;
         _mesh = result.MeshResult.Mesh;
+        UpdateRenderBackendForMesh();
+        _projectFrames.Clear();
+        _projectFrames.Add(new ProjectFrameState(
+            "frame_0000", 100, result.Document, result.Import.Views, result.MeshResult.Mesh));
+        _currentFrameIndex = 0;
+        _timelinePlaying = false;
+        _timelineElapsedMilliseconds = 0d;
+        NotifyTimelineChanged();
         _projectPath = null;
         _editHistory.Clear();
         ClearSelection();
@@ -2326,13 +2814,13 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         ResizeHeight = dimensions.Height;
         ResizeDepth = dimensions.Depth;
         _renderLayout = _layoutResolver.Resolve(dimensions, _sourcePixelWidth, _sourcePixelHeight);
-        OnPropertyChanged(nameof(CanExport));
+        NotifyExportAvailabilityChanged();
         ActiveWorkspace = WorkspaceMode.Edit;
         AddCurrentImportToRecent();
         string slotLines = string.Join(
             Environment.NewLine,
             result.Import.Slots.Select(slot =>
-                $"{slot.Face}: {slot.Width}×{slot.Height}, {slot.OpaquePixelCount:N0} opaque"));
+                $"{slot.Face}: {slot.Width}×{slot.Height}, {slot.OpaquePixelCount:N0} visible"));
         long candidateCount = checked((long)dimensions.Width * dimensions.Height * dimensions.Depth);
         ImportSummary =
             $"Source: {Path.GetFileName(result.Import.SourcePath)}{Environment.NewLine}" +
@@ -2390,6 +2878,11 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         RenderStateChanged?.Invoke(this, EventArgs.Empty);
     }
 
+    private void UpdateRenderBackendForMesh()
+    {
+        IsCpuFallbackActive = _openGlUnavailable || _mesh?.HasTranslucentFaces == true;
+    }
+
     private void ApplyFreeCamera()
     {
         float yaw = VoxelCameraMotion.Snap(_rawYawDegrees);
@@ -2439,6 +2932,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         }
 
         _modelRotation = new VoxelModelRotationState(yaw, pitch, roll);
+        MarkProjectSettingsDirty();
         ObjectRotationSummary = $"Object · Yaw {yaw:0}° · Pitch {pitch:0}° · Roll {roll:0}°";
         OnPropertyChanged(nameof(CurrentModelRotation));
         OnPropertyChanged(nameof(ModelRollDegrees));
@@ -2458,6 +2952,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         _rawModelPitchDegrees = _modelRotation.PitchDegrees;
         _rawModelRollDegrees = _modelRotation.RollDegrees;
         ObjectRotationSummary = $"Object · Yaw {_rawModelYawDegrees:0}° · Pitch {_rawModelPitchDegrees:0}° · Roll {_rawModelRollDegrees:0}°";
+        MarkProjectSettingsDirty();
         OnPropertyChanged(nameof(CurrentModelRotation));
         OnPropertyChanged(nameof(ModelRollDegrees));
         RenderCurrentScene();
@@ -2588,7 +3083,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         float.IsFinite(value) ? value : fallback;
 
     private static Rgba32Color ToRgba(AvaloniaColor color) =>
-        new(color.R, color.G, color.B, 255);
+        new(color.R, color.G, color.B, color.A);
 
     private static string ToHex(AvaloniaColor color) => $"#{color.R:X2}{color.G:X2}{color.B:X2}";
 
@@ -2635,21 +3130,34 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         value[0] == '#' &&
         int.TryParse(value.AsSpan(1), System.Globalization.NumberStyles.HexNumber, null, out _);
 
-    private static WriteableBitmap CreateImportPreviewBitmap(OrthographicImage image)
+    private static WriteableBitmap CreateImportPreviewBitmap(
+        OrthographicImage image,
+        IEnumerable<VoxelReprojectionConflict>? conflicts = null)
     {
-        Rgba32Color[] pixels = new Rgba32Color[checked(image.Width * image.Height)];
-        for (int y = 0; y < image.Height; y++)
+        Rgba32Color[] pixels = image.Pixels.ToArray();
+        foreach (VoxelReprojectionConflict conflict in conflicts ?? [])
         {
-            for (int x = 0; x < image.Width; x++)
-            {
-                Rgba32Color source = image.GetPixel(x, y);
-                pixels[(y * image.Width) + x] = source.Alpha is > 0 and < byte.MaxValue
-                    ? new Rgba32Color(255, 0, 255, 255)
-                    : source;
-            }
+            int index = (conflict.Y * image.Width) + conflict.X;
+            pixels[index] = conflict.SourceOccupied
+                ? new Rgba32Color(255, 32, 64, 255)
+                : new Rgba32Color(255, 220, 0, 255);
         }
-
         return CreateBitmap(image.Width, image.Height, pixels);
+    }
+
+    private static WriteableBitmap? TryCreateImportPreviewBitmap(
+        OrthographicImage image,
+        IEnumerable<VoxelReprojectionConflict>? conflicts = null)
+    {
+        try
+        {
+            return CreateImportPreviewBitmap(image, conflicts);
+        }
+        catch (InvalidOperationException exception) when (
+            exception.Message.Contains("IPlatformRenderInterface", StringComparison.Ordinal))
+        {
+            return null;
+        }
     }
 
     private static WriteableBitmap CreateBitmap(PixelFramebuffer frame) =>
@@ -2704,4 +3212,27 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         SixViewImportResult Import,
         VoxelDocument Document,
         VoxelMeshBuildResult MeshResult);
+
+    private sealed class ProjectFrameState
+    {
+        public ProjectFrameState(
+            string name,
+            int durationMilliseconds,
+            VoxelDocument document,
+            OrthographicViewSet? sourceViews,
+            VoxelMeshData? mesh)
+        {
+            Name = name;
+            DurationMilliseconds = durationMilliseconds;
+            Document = document;
+            SourceViews = sourceViews;
+            Mesh = mesh;
+        }
+
+        public string Name { get; }
+        public int DurationMilliseconds { get; }
+        public VoxelDocument Document { get; }
+        public OrthographicViewSet? SourceViews { get; }
+        public VoxelMeshData? Mesh { get; set; }
+    }
 }

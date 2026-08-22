@@ -63,4 +63,13 @@ public sealed class OrthographicImage
 
         return _pixels[(y * Width) + x];
     }
+
+    /// <summary>Creates a copy with one source pixel replaced.</summary>
+    public OrthographicImage WithPixel(int x, int y, Rgba32Color color)
+    {
+        _ = GetPixel(x, y);
+        Rgba32Color[] pixels = (Rgba32Color[])_pixels.Clone();
+        pixels[(y * Width) + x] = color;
+        return new OrthographicImage(Width, Height, pixels);
+    }
 }

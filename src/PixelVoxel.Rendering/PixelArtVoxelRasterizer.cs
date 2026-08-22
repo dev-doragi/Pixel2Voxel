@@ -93,7 +93,8 @@ public sealed class PixelArtVoxelRasterizer
             mesh,
             transform,
             layout.Width,
-            layout.Height);
+            layout.Height,
+            style);
         return PixelSurfacePostProcessor.Process(surface, style);
     }
 }

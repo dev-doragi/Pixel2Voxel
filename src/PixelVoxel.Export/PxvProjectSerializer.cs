@@ -6,10 +6,10 @@ using PixelVoxel.Imaging;
 
 namespace PixelVoxel.Export;
 
-/// <summary>Reads v1/v2 and writes version 2 portable .pxv ZIP containers.</summary>
+/// <summary>Reads v1-v3 and writes version 3 portable .pxv ZIP containers.</summary>
 public sealed class PxvProjectSerializer : IProjectSerializer
 {
-    private const int FormatVersion = 2;
+    private const int FormatVersion = 3;
     private const long MaximumCandidateCells = 1_048_576;
     private static readonly byte[] DocumentMagic = "PXVD"u8.ToArray();
     private static readonly DateTimeOffset StableEntryTime = new(1980, 1, 1, 0, 0, 0, TimeSpan.Zero);
@@ -61,6 +61,21 @@ public sealed class PxvProjectSerializer : IProjectSerializer
                 VoxelDimensions dimensions = project.Document.Storage.Dimensions;
                 ValidateDimensions(dimensions);
                 VoxelFace[] views = project.SourceViews?.Faces.OrderBy(face => (int)face).ToArray() ?? [];
+                FrameManifest[] frameManifests = project.Frames.Select((frame, index) =>
+                {
+                    VoxelDimensions frameDimensions = frame.Document.Storage.Dimensions;
+                    ValidateDimensions(frameDimensions);
+                    string frameRoot = $"frames/{index:D4}";
+                    return new FrameManifest(
+                        frame.Name,
+                        frame.DurationMilliseconds,
+                        frameDimensions.Width,
+                        frameDimensions.Height,
+                        frameDimensions.Depth,
+                        frame.SourceViews?.Faces.OrderBy(face => (int)face).Select(FaceName).ToArray() ?? [],
+                        $"{frameRoot}/document.bin",
+                        $"{frameRoot}/views");
+                }).ToArray();
                 ProjectManifest manifest = new(
                     "PixelVoxel",
                     FormatVersion,
@@ -70,24 +85,17 @@ public sealed class PxvProjectSerializer : IProjectSerializer
                     dimensions.Depth,
                     views.Select(FaceName).ToArray(),
                     project.Settings,
-                    project.Palette);
+                    project.Palette,
+                    new AnimationManifest(project.CurrentFrameIndex, frameManifests));
                 await WriteJsonEntryAsync(archive, "manifest.json", manifest, cancellationToken);
                 WriteDocumentEntry(archive, project.Document, cancellationToken);
-                if (project.SourceViews is not null)
+                await WriteViewsAsync(archive, "views", project.SourceViews, cancellationToken);
+                for (int index = 0; index < project.Frames.Count; index++)
                 {
-                    foreach (VoxelFace face in views)
-                    {
-                        cancellationToken.ThrowIfCancellationRequested();
-                        OrthographicImage image = project.SourceViews[face];
-                        ZipArchiveEntry entry = CreateEntry(archive, $"views/{FaceName(face)}.png");
-                        await using Stream entryStream = entry.Open();
-                        await _pngWriter.WriteAsync(
-                            entryStream,
-                            image.Width,
-                            image.Height,
-                            image.Pixels,
-                            cancellationToken);
-                    }
+                    PixelVoxelProjectFrame frame = project.Frames[index];
+                    string frameRoot = $"frames/{index:D4}";
+                    WriteDocumentEntry(archive, frame.Document, cancellationToken, $"{frameRoot}/document.bin");
+                    await WriteViewsAsync(archive, $"{frameRoot}/views", frame.SourceViews, cancellationToken);
                 }
             }
 
@@ -116,7 +124,7 @@ public sealed class PxvProjectSerializer : IProjectSerializer
             FileOptions.Asynchronous | FileOptions.SequentialScan);
         using ZipArchive archive = new(stream, ZipArchiveMode.Read, leaveOpen: false);
         ProjectManifest manifest = await ReadManifestAsync(archive, cancellationToken);
-        if (manifest.Format != "PixelVoxel" || manifest.Version is not (1 or FormatVersion))
+        if (manifest.Format != "PixelVoxel" || manifest.Version is < 1 or > FormatVersion)
         {
             throw new InvalidDataException($"Unsupported Pixel2Voxel project version {manifest.Version}.");
         }
@@ -124,6 +132,11 @@ public sealed class PxvProjectSerializer : IProjectSerializer
         if (manifest.CoordinateSystem != "XYZ-RightUpFront-v1")
         {
             throw new InvalidDataException("The project coordinate system is not supported.");
+        }
+
+        if (manifest.Version == FormatVersion && manifest.Animation is not null)
+        {
+            return await ReadAnimatedProjectAsync(archive, manifest, cancellationToken);
         }
 
         VoxelDimensions dimensions = new(manifest.Width, manifest.Height, manifest.Depth);
@@ -147,12 +160,93 @@ public sealed class PxvProjectSerializer : IProjectSerializer
 
         OrthographicViewSet? sourceViews = views.Count == 0 ? null : new OrthographicViewSet(views);
         Rgba32Color[] palette = manifest.Palette?.ToArray() ?? [];
-        if (palette.Length > 32 || palette.Any(color => color.Alpha != byte.MaxValue))
+        if (palette.Length > 32)
         {
-            throw new InvalidDataException("Project palette must contain at most 32 opaque colors.");
+            throw new InvalidDataException("Project palette must contain at most 32 colors.");
         }
 
         return new PixelVoxelProject(document, sourceViews, manifest.Settings, palette);
+    }
+
+    private async Task<PixelVoxelProject> ReadAnimatedProjectAsync(
+        ZipArchive archive,
+        ProjectManifest manifest,
+        CancellationToken cancellationToken)
+    {
+        AnimationManifest animation = manifest.Animation!;
+        if (animation.Frames is null || animation.Frames.Count == 0 ||
+            (uint)animation.CurrentFrameIndex >= (uint)animation.Frames.Count)
+        {
+            throw new InvalidDataException("Project animation metadata has an invalid frame selection.");
+        }
+
+        List<PixelVoxelProjectFrame> frames = new(animation.Frames.Count);
+        HashSet<string> names = new(StringComparer.Ordinal);
+        foreach (FrameManifest frame in animation.Frames)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (string.IsNullOrWhiteSpace(frame.Name) || !names.Add(frame.Name) || frame.DurationMilliseconds <= 0 ||
+                frame.Views is null || !IsSafeFrameEntry(frame.DocumentPath, "document.bin") ||
+                !IsSafeFrameDirectory(frame.ViewsDirectory))
+                throw new InvalidDataException("Project animation contains an invalid or duplicate frame name/duration.");
+            VoxelDimensions dimensions = new(frame.Width, frame.Height, frame.Depth);
+            ValidateDimensions(dimensions);
+            VoxelDocument document = ReadDocumentEntry(
+                archive, dimensions, manifest.Version, cancellationToken, frame.DocumentPath);
+            OrthographicViewSet? views = await ReadViewsAsync(
+                archive, frame.ViewsDirectory, frame.Views, cancellationToken);
+            frames.Add(new PixelVoxelProjectFrame(frame.Name, frame.DurationMilliseconds, document, views));
+        }
+
+        Rgba32Color[] palette = manifest.Palette?.ToArray() ?? [];
+        if (palette.Length > 32) throw new InvalidDataException("Project palette must contain at most 32 colors.");
+        return new PixelVoxelProject(frames, animation.CurrentFrameIndex, manifest.Settings, palette);
+    }
+
+    private static bool IsSafeFrameEntry(string? path, string fileName) =>
+        path is not null && path.StartsWith("frames/", StringComparison.Ordinal) &&
+        path.EndsWith('/' + fileName, StringComparison.Ordinal) &&
+        !path.Contains("..", StringComparison.Ordinal) && !path.Contains('\\');
+
+    private static bool IsSafeFrameDirectory(string? path) =>
+        path is not null && path.StartsWith("frames/", StringComparison.Ordinal) &&
+        path.EndsWith("/views", StringComparison.Ordinal) &&
+        !path.Contains("..", StringComparison.Ordinal) && !path.Contains('\\');
+
+    private async Task<OrthographicViewSet?> ReadViewsAsync(
+        ZipArchive archive,
+        string directory,
+        IReadOnlyList<string> faceNames,
+        CancellationToken cancellationToken)
+    {
+        Dictionary<VoxelFace, OrthographicImage> views = [];
+        foreach (string faceName in faceNames)
+        {
+            VoxelFace face = ParseFace(faceName);
+            if (!views.TryAdd(face, null!)) throw new InvalidDataException($"Project view {faceName} is duplicated.");
+            ZipArchiveEntry entry = archive.GetEntry($"{directory}/{FaceName(face)}.png") ??
+                throw new InvalidDataException($"Project view {faceName} is missing.");
+            await using Stream stream = entry.Open();
+            views[face] = await _pngReader.ReadAsync(stream, cancellationToken);
+        }
+        return views.Count == 0 ? null : new OrthographicViewSet(views);
+    }
+
+    private async Task WriteViewsAsync(
+        ZipArchive archive,
+        string directory,
+        OrthographicViewSet? sourceViews,
+        CancellationToken cancellationToken)
+    {
+        if (sourceViews is null) return;
+        foreach (VoxelFace face in sourceViews.Faces.OrderBy(face => (int)face))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            OrthographicImage image = sourceViews[face];
+            ZipArchiveEntry entry = CreateEntry(archive, $"{directory}/{FaceName(face)}.png");
+            await using Stream entryStream = entry.Open();
+            await _pngWriter.WriteAsync(entryStream, image.Width, image.Height, image.Pixels, cancellationToken);
+        }
     }
 
     private static string ValidatePath(string path)
@@ -201,9 +295,10 @@ public sealed class PxvProjectSerializer : IProjectSerializer
     private static void WriteDocumentEntry(
         ZipArchive archive,
         VoxelDocument document,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string entryName = "document.bin")
     {
-        ZipArchiveEntry entry = CreateEntry(archive, "document.bin");
+        ZipArchiveEntry entry = CreateEntry(archive, entryName);
         using Stream stream = entry.Open();
         using BinaryWriter writer = new(stream, Encoding.UTF8, leaveOpen: false);
         writer.Write(DocumentMagic);
@@ -243,10 +338,11 @@ public sealed class PxvProjectSerializer : IProjectSerializer
         ZipArchive archive,
         VoxelDimensions dimensions,
         int expectedVersion,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string entryName = "document.bin")
     {
-        ZipArchiveEntry entry = archive.GetEntry("document.bin") ??
-            throw new InvalidDataException("Project document.bin is missing.");
+        ZipArchiveEntry entry = archive.GetEntry(entryName) ??
+            throw new InvalidDataException($"Project {entryName} is missing.");
         using Stream stream = entry.Open();
         using BinaryReader reader = new(stream, Encoding.UTF8, leaveOpen: false);
         if (!reader.ReadBytes(DocumentMagic.Length).SequenceEqual(DocumentMagic))
@@ -255,7 +351,7 @@ public sealed class PxvProjectSerializer : IProjectSerializer
         }
 
         int version = reader.ReadInt32();
-        if (version != expectedVersion || version is not (1 or FormatVersion))
+        if (version != expectedVersion || version is < 1 or > FormatVersion)
         {
             throw new InvalidDataException($"Unsupported voxel data version {version}.");
         }
@@ -333,5 +429,18 @@ public sealed class PxvProjectSerializer : IProjectSerializer
         int Depth,
         IReadOnlyList<string> Views,
         PixelVoxelProjectSettings Settings,
-        IReadOnlyList<Rgba32Color>? Palette = null);
+        IReadOnlyList<Rgba32Color>? Palette = null,
+        AnimationManifest? Animation = null);
+
+    private sealed record AnimationManifest(int CurrentFrameIndex, IReadOnlyList<FrameManifest> Frames);
+
+    private sealed record FrameManifest(
+        string Name,
+        int DurationMilliseconds,
+        int Width,
+        int Height,
+        int Depth,
+        IReadOnlyList<string> Views,
+        string DocumentPath,
+        string ViewsDirectory);
 }

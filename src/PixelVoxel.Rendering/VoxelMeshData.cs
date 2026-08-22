@@ -58,6 +58,9 @@ public sealed class VoxelMeshData
     /// <summary>Gets the number of exposed faces in the cache.</summary>
     public int ExposedFaceCount => FaceNormals.Length;
 
+    /// <summary>Gets whether at least one exposed face needs alpha compositing.</summary>
+    public bool HasTranslucentFaces => _vertices.Any(vertex => vertex.Color.Alpha < byte.MaxValue);
+
     /// <summary>Creates a viewport-only mesh carrying selection and hover masks.</summary>
     public VoxelMeshData WithEditorOverlay(
         VoxelSelectionBox? selection,

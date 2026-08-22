@@ -12,7 +12,7 @@ internal static class PixelSurfacePostProcessor
         for (int index = 0; index < output.Length; index++)
         {
             output[index] = surface.Coverage[index]
-                ? ApplyLighting(surface.Colors[index], surface.Normals[index], style.Lighting)
+                ? SourceOver(surface.Colors[index], style.Background)
                 : style.Background;
         }
 
@@ -109,6 +109,24 @@ internal static class PixelSurfacePostProcessor
             (int)MathF.Round(value * brightness, MidpointRounding.AwayFromZero),
             byte.MinValue,
             byte.MaxValue);
+
+    private static Rgba32Color SourceOver(Rgba32Color source, Rgba32Color destination)
+    {
+        float sourceAlpha = source.Alpha / 255f;
+        float destinationAlpha = destination.Alpha / 255f;
+        float outputAlpha = sourceAlpha + (destinationAlpha * (1f - sourceAlpha));
+        if (outputAlpha <= 0f) return default;
+        byte Blend(byte sourceChannel, byte destinationChannel) =>
+            (byte)Math.Clamp((int)MathF.Round(
+                ((sourceChannel * sourceAlpha) +
+                 (destinationChannel * destinationAlpha * (1f - sourceAlpha))) / outputAlpha,
+                MidpointRounding.AwayFromZero), 0, 255);
+        return new Rgba32Color(
+            Blend(source.Red, destination.Red),
+            Blend(source.Green, destination.Green),
+            Blend(source.Blue, destination.Blue),
+            (byte)Math.Clamp((int)MathF.Round(outputAlpha * 255f, MidpointRounding.AwayFromZero), 0, 255));
+    }
 
     private static bool HasCoveredNeighbor(PixelRasterSurface surface, int x, int y)
     {

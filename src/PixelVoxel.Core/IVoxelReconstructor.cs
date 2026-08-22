@@ -11,4 +11,7 @@ public interface IVoxelReconstructor
     /// <param name="views">The available source views.</param>
     /// <returns>A reconstructed voxel document.</returns>
     VoxelDocument Reconstruct(OrthographicViewSet views);
+
+    /// <summary>Reconstructs using explicit lengths for axes not observed by the supplied faces.</summary>
+    VoxelDocument Reconstruct(OrthographicViewSet views, VoxelReconstructionOptions options);
 }

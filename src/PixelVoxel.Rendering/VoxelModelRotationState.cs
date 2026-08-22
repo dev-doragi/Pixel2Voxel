@@ -51,6 +51,32 @@ public sealed record VoxelModelRotationState
             VoxelOrientation.RotateLocal(Orientation, localAxis, appliedDegrees));
     }
 
+    /// <summary>
+    /// Applies absolute yaw, pitch, and roll deltas around the model axes captured by this state.
+    /// The result depends only on the base state and supplied angles, so animation sampling cannot drift.
+    /// </summary>
+    public VoxelModelRotationState RotateFixedLocal(float yawDegrees, float pitchDegrees, float rollDegrees)
+    {
+        if (!float.IsFinite(yawDegrees) || !float.IsFinite(pitchDegrees) || !float.IsFinite(rollDegrees))
+        {
+            throw new ArgumentOutOfRangeException(nameof(yawDegrees));
+        }
+
+        Matrix4x4 current = Matrix4x4.CreateFromQuaternion(Orientation);
+        Matrix4x4 delta = Matrix4x4.CreateFromQuaternion(
+            VoxelOrientation.FromYawPitchRoll(yawDegrees, pitchDegrees, rollDegrees));
+        return new VoxelModelRotationState(
+            YawDegrees + yawDegrees,
+            PitchDegrees + pitchDegrees,
+            RollDegrees + rollDegrees,
+            Quaternion.Normalize(Quaternion.CreateFromRotationMatrix(current * delta)));
+    }
+
+    /// <summary>Restores a persisted authoritative orientation and compatibility display angles.</summary>
+    public static VoxelModelRotationState FromOrientation(
+        float yawDegrees, float pitchDegrees, float rollDegrees, Quaternion orientation) =>
+        new(yawDegrees, pitchDegrees, rollDegrees, orientation);
+
     /// <summary>Applies a rotation around an axis expressed in world space.</summary>
     public VoxelModelRotationState RotateWorld(Vector3 worldAxis, float degrees)
     {

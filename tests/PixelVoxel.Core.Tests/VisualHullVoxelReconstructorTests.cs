@@ -39,6 +39,41 @@ public sealed class VisualHullVoxelReconstructorTests
     }
 
     [Fact]
+    public void UsesExplicitLengthForAnAxisMissingFromTheSelectedViews()
+    {
+        OrthographicViewSet frontOnly = new(
+            new Dictionary<VoxelFace, OrthographicImage>
+            {
+                [VoxelFace.Front] = CreateSolidImage(2, 3, 40),
+            });
+
+        VoxelDocument document = new VisualHullVoxelReconstructor().Reconstruct(
+            frontOnly,
+            new VoxelReconstructionOptions(7, 8, 5));
+
+        Assert.Equal(new VoxelDimensions(2, 3, 5), document.Storage.Dimensions);
+        Assert.Equal(30, document.Storage.OccupiedCount);
+        Assert.True(document.Storage.TryGetCell(new VoxelCoordinate(0, 0, 0), out VoxelCell? cell));
+        Assert.All(Enum.GetValues<VoxelFace>(), face =>
+            Assert.Equal(new Rgba32Color(40, 0, 0, 255), cell!.GetColor(face)));
+    }
+
+    [Fact]
+    public void RejectsInvalidUnobservedAxisLengths()
+    {
+        OrthographicViewSet frontOnly = new(
+            new Dictionary<VoxelFace, OrthographicImage>
+            {
+                [VoxelFace.Front] = CreateSolidImage(1, 1, 40),
+            });
+
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            new VisualHullVoxelReconstructor().Reconstruct(
+                frontOnly,
+                new VoxelReconstructionOptions(1, 1, 0)));
+    }
+
+    [Fact]
     public void UsesTheUnionOfObservedAxisRanges()
     {
         Rgba32Color transparent = new(0, 0, 0, 0);
@@ -78,7 +113,7 @@ public sealed class VisualHullVoxelReconstructorTests
     }
 
     [Fact]
-    public void RejectsNonBinaryAlpha()
+    public void PreservesPartialAlphaAndTreatsItAsOccupied()
     {
         OrthographicViewSet views = new(
             new Dictionary<VoxelFace, OrthographicImage>
@@ -86,11 +121,11 @@ public sealed class VisualHullVoxelReconstructorTests
                 [VoxelFace.Front] = new(1, 1, [new Rgba32Color(1, 2, 3, 128)]),
             });
 
-        ArgumentException exception = Assert.Throws<ArgumentException>(() =>
-            new VisualHullVoxelReconstructor().Reconstruct(views));
+        VoxelDocument document = new VisualHullVoxelReconstructor().Reconstruct(views);
 
-        Assert.Contains("non-binary alpha 128", exception.Message);
-        Assert.Contains("(0, 0)", exception.Message);
+        Assert.Equal(1, document.Storage.OccupiedCount);
+        Assert.True(document.Storage.TryGetCell(new VoxelCoordinate(0, 0, 0), out VoxelCell? cell));
+        Assert.Equal(new Rgba32Color(1, 2, 3, 128), cell!.GetColor(VoxelFace.Front));
     }
 
     [Fact]

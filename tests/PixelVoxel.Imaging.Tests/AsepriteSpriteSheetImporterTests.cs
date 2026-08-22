@@ -68,7 +68,7 @@ public sealed class AsepriteSpriteSheetImporterTests
     }
 
     [Fact]
-    public void RejectsNonBinaryAlphaWithFaceAndPixelCoordinate()
+    public void ImportsPartialAlphaWithoutBlockingReconstruction()
     {
         string path = NewTemporaryPngPath();
 
@@ -80,11 +80,9 @@ public sealed class AsepriteSpriteSheetImporterTests
                 image.SaveAsPng(path);
             }
 
-            InvalidDataException exception = Assert.Throws<InvalidDataException>(() =>
-                new AsepriteSpriteSheetImporter().ImportHorizontalSheet(path));
+            SixViewImportResult result = new AsepriteSpriteSheetImporter().ImportHorizontalSheet(path);
 
-            Assert.Contains("Right", exception.Message);
-            Assert.Contains("(0, 1)", exception.Message);
+            Assert.Equal(128, result.Views[VoxelFace.Right].GetPixel(0, 1).Alpha);
         }
         finally
         {
@@ -93,7 +91,7 @@ public sealed class AsepriteSpriteSheetImporterTests
     }
 
     [Fact]
-    public void InspectionPreservesNonBinaryAlphaForVisualDiagnostics()
+    public void InspectionPreservesPartialAlphaWithoutAnErrorDiagnostic()
     {
         string path = NewTemporaryPngPath();
 
@@ -108,12 +106,7 @@ public sealed class AsepriteSpriteSheetImporterTests
             SixViewImportDraft draft =
                 new AsepriteSpriteSheetImporter().InspectHorizontalSheet(path);
 
-            ImportDiagnostic diagnostic = Assert.Single(
-                draft.Diagnostics,
-                item => item.Code == "non-binary-alpha");
-            Assert.Equal(VoxelFace.Right, diagnostic.Face);
-            Assert.Equal(0, diagnostic.X);
-            Assert.Equal(1, diagnostic.Y);
+            Assert.DoesNotContain(draft.Diagnostics, item => item.Code == "non-binary-alpha");
             Assert.Equal(128, draft.Slots[1].Image.GetPixel(0, 1).Alpha);
         }
         finally
@@ -146,7 +139,7 @@ public sealed class AsepriteSpriteSheetImporterTests
                 new AsepriteSpriteSheetImporter().ImportHorizontalSheet(path));
 
             Assert.Contains("Left", exception.Message);
-            Assert.Contains("no opaque pixels", exception.Message);
+            Assert.Contains("no visible pixels", exception.Message);
         }
         finally
         {
@@ -246,6 +239,34 @@ public sealed class AsepriteSpriteSheetImporterTests
                 Assert.Equal(2, slot.Height);
                 Assert.Equal(4, slot.OpaquePixelCount);
             });
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void ImportsOneExplicitFaceWithoutInventingMissingFaceErrors()
+    {
+        string directory = Path.Combine(Path.GetTempPath(), $"pixel-voxel-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(directory);
+        string frontPath = Path.Combine(directory, "front.png");
+
+        try
+        {
+            using (Image<ImageSharpColor> image = new(2, 3, new ImageSharpColor(1, 2, 3, 128)))
+            {
+                image.SaveAsPng(frontPath);
+            }
+
+            SixViewImportResult result = new AsepriteSpriteSheetImporter().ImportSeparate(
+                new Dictionary<VoxelFace, string> { [VoxelFace.Front] = frontPath });
+
+            Assert.Equal(1, result.Views.Count);
+            Assert.Single(result.Slots);
+            Assert.DoesNotContain(result.Diagnostics, message => message.Contains("missing", StringComparison.OrdinalIgnoreCase));
+            Assert.Equal(6, result.Slots[0].OpaquePixelCount);
         }
         finally
         {

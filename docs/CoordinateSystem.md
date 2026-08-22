@@ -17,7 +17,7 @@
 
 ## Rotation gizmo
 
-- Gizmo drags are evaluated from the orientation captured at pointer-down, so the ring geometry and axis do not drift during a drag.
+- Gizmo drags are evaluated from the quaternion captured at pointer-down, so the ring geometry and axis do not drift during a drag or collapse back to Euler composition.
 - Gizmo rotation consumes relative pointer movement only: right/down are positive and left/up are negative.
 - During a Windows gizmo drag the pointer is recentered after each movement, allowing an unbounded drag without producing rotation while the mouse is stationary.
 - X edits Pitch, Y edits Yaw, and Z edits Roll as deterministic Euler controls.
@@ -59,7 +59,7 @@
 - 카메라 Yaw는 월드 +Y, Pitch는 yaw가 적용된 로컬 +X를 기준으로 하며 Roll은 사용하지 않는다.
 - 뷰포트 조작은 우클릭 Orbit, 중클릭 Pan, 휠 Zoom을 사용한다.
 - 오브젝트 X/Y/Z Gizmo는 현재 오브젝트의 로컬 축을 사용하고 바깥 View Roll 링은 현재 카메라 시선축을 사용한다.
-- Yaw/Pitch/Roll Animation은 모델 중심점 기준 로컬 quaternion 회전만 변경한다.
+- Yaw/Pitch/Roll Animation은 볼륨 경계의 기하 중심을 피벗으로 사용한다. 재생 시작 quaternion과 시트가 정의한 고정 모델 +X/+Y/+Z 축에 절대 시간 각도를 합성하므로 프레임 누적 오차나 축 표류가 없다.
 - 모델 회전과 카메라 회전은 렌더 프레임에서 합성하며 서로의 각도 상태를 덮어쓰지 않는다.
 - Free View 카메라는 축 정렬 면에서 2° 이내일 때 해당 면의 정면 각도로 스냅할 수 있다.
 - 면 정렬은 카메라 시선과 면 노멀이 평행한 상태이며 `|dot|`이 1에 가까운 조건이다.

@@ -22,5 +22,6 @@ public enum ExportWorkflowMode
     DirectionSheet,
     AnimatedGif,
     AnimationSheet,
+    TrimmedAtlas,
     UnityObj,
 }

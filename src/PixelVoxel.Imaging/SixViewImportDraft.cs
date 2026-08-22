@@ -68,7 +68,7 @@ public sealed class SixViewSourceSlot
     /// <summary>Gets the face inferred from sheet position or file name, when available.</summary>
     public VoxelFace? SuggestedFace { get; }
 
-    /// <summary>Gets the number of fully opaque source pixels.</summary>
+    /// <summary>Gets the number of visible source pixels.</summary>
     public int OpaquePixelCount { get; }
 
     /// <summary>Gets source-local validation diagnostics.</summary>

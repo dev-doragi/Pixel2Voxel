@@ -4,6 +4,7 @@ using PixelVoxel.Core;
 using PixelVoxel.Imaging;
 using PixelVoxel.Rendering;
 using PixelVoxel.Export;
+using System.Text.Json;
 
 namespace PixelVoxel.App.Tests;
 
@@ -272,19 +273,28 @@ public sealed class MainWindowViewModelTests : IDisposable
     }
 
     [Fact]
-    public void GizmoDragUsesCapturedYawPitchRollInsteadOfAccumulatingLocalAxes()
+    public void GizmoDragUsesCapturedQuaternionAndFixedModelAxes()
     {
         using MainWindowViewModel viewModel = CreateViewModel();
         VoxelModelRotationState start = new(20f, 30f, 40f);
 
         viewModel.SetObjectRotationFromDrag(start, RotationGizmoAxis.LocalY, 15f);
-        Assert.Equal(new VoxelModelRotationState(35f, 30f, 40f), viewModel.CurrentModelRotation);
+        Assert.Equal((35f, 30f, 40f), RotationAngles(viewModel.CurrentModelRotation));
+        AssertOrientationEqual(
+            VoxelOrientation.RotateLocal(start.Orientation, System.Numerics.Vector3.UnitY, 15f),
+            viewModel.CurrentModelRotation.Orientation);
 
         viewModel.SetObjectRotationFromDrag(start, RotationGizmoAxis.LocalX, -10f);
-        Assert.Equal(new VoxelModelRotationState(20f, 20f, 40f), viewModel.CurrentModelRotation);
+        Assert.Equal((20f, 20f, 40f), RotationAngles(viewModel.CurrentModelRotation));
+        AssertOrientationEqual(
+            VoxelOrientation.RotateLocal(start.Orientation, System.Numerics.Vector3.UnitX, 10f),
+            viewModel.CurrentModelRotation.Orientation);
 
         viewModel.SetObjectRotationFromDrag(start, RotationGizmoAxis.LocalZ, 25f);
-        Assert.Equal(new VoxelModelRotationState(20f, 30f, 65f), viewModel.CurrentModelRotation);
+        Assert.Equal((20f, 30f, 65f), RotationAngles(viewModel.CurrentModelRotation));
+        AssertOrientationEqual(
+            VoxelOrientation.RotateLocal(start.Orientation, System.Numerics.Vector3.UnitZ, 25f),
+            viewModel.CurrentModelRotation.Orientation);
     }
 
     [Fact]
@@ -366,6 +376,19 @@ public sealed class MainWindowViewModelTests : IDisposable
         Assert.False(viewModel.IsAnimationActive);
         Assert.True(viewModel.HasAnimationAxis);
         Assert.True(viewModel.YawAnimationEnabled);
+    }
+
+    [Fact]
+    public async Task AnimationExportRequiresAnAxisUnlessTheProjectHasTimelineFrames()
+    {
+        using MainWindowViewModel viewModel = CreateViewModel();
+        await viewModel.NewProjectAsync(TestContext.Current.CancellationToken);
+        Assert.True(viewModel.CanExport);
+        Assert.False(viewModel.CanExportAnimation);
+
+        viewModel.YawAnimationEnabled = true;
+
+        Assert.True(viewModel.CanExportAnimation);
     }
 
     [Fact]
@@ -524,7 +547,7 @@ public sealed class MainWindowViewModelTests : IDisposable
         SpriteFrame[] frames = await coordinator.RenderRotationFramesAsync(
             4, 180, true, false, true, camera, baseRotation, mesh, layout,
             VoxelRenderStyle.Default, true, TestContext.Current.CancellationToken);
-        VoxelModelRotationState expectedRotation = new(110f, 30f, 130f);
+        VoxelModelRotationState expectedRotation = baseRotation.RotateFixedLocal(90f, 0f, 90f);
         Rgba32Color background = VoxelRenderStyle.Default.Background;
         PixelFramebuffer expected = rasterizer.Render(
             mesh, camera with { PanX = 0f, PanY = 0f, Zoom = 1f }, expectedRotation, layout,
@@ -552,14 +575,25 @@ public sealed class MainWindowViewModelTests : IDisposable
         return (mesh, layout);
     }
 
+    private static (float Yaw, float Pitch, float Roll) RotationAngles(VoxelModelRotationState rotation) =>
+        (rotation.YawDegrees, rotation.PitchDegrees, rotation.RollDegrees);
+
+    private static void AssertOrientationEqual(
+        System.Numerics.Quaternion expected,
+        System.Numerics.Quaternion actual)
+    {
+        float alignment = MathF.Abs(System.Numerics.Quaternion.Dot(expected, actual));
+        Assert.InRange(alignment, 0.99999f, 1.00001f);
+    }
+
     [Fact]
     public async Task InspectDoesNotReplaceModelAndBlockingDraftPreservesExistingModel()
     {
         string validPath = Path.Combine(_directory, "valid-sheet.png");
         string invalidPath = Path.Combine(_directory, "invalid-sheet.png");
         Directory.CreateDirectory(_directory);
-        await WriteSheetAsync(validPath, nonBinaryAlpha: false);
-        await WriteSheetAsync(invalidPath, nonBinaryAlpha: true);
+        await WriteSheetAsync(validPath, emptyRightSlot: false);
+        await WriteSheetAsync(invalidPath, emptyRightSlot: true);
         using MainWindowViewModel viewModel = CreateViewModel();
         bool exportWasEnabledWhenNotified = false;
         viewModel.PropertyChanged += (_, args) =>
@@ -597,6 +631,102 @@ public sealed class MainWindowViewModelTests : IDisposable
     }
 
     [Fact]
+    public async Task OneFaceImportUsesTheExplicitUnobservedDepth()
+    {
+        Directory.CreateDirectory(_directory);
+        string frontPath = Path.Combine(_directory, "front.png");
+        await new PngPixelWriter().WriteAsync(
+            frontPath,
+            2,
+            3,
+            Enumerable.Repeat(new Rgba32Color(10, 20, 30, 200), 6).ToArray(),
+            TestContext.Current.CancellationToken);
+        using MainWindowViewModel viewModel = CreateViewModel();
+        viewModel.UnobservedZLength = 4;
+        viewModel.SetSeparatePath(VoxelFace.Front, frontPath);
+
+        await viewModel.ReconstructSeparateAsync();
+
+        Assert.True(viewModel.CanApplyImport);
+        await viewModel.ApplyImportDraftAsync();
+        Assert.True(viewModel.HasDocument, viewModel.StatusText);
+        Assert.Equal(new VoxelDimensions(2, 3, 4), viewModel.CurrentDocument!.Storage.Dimensions);
+        Assert.Equal(24, viewModel.CurrentDocument.Storage.OccupiedCount);
+        Assert.True(viewModel.IsCpuFallbackActive);
+    }
+
+    [Fact]
+    public async Task SourceMaskEditingBlocksAnEmptyFaceAndPaintRestoresReconstruction()
+    {
+        Directory.CreateDirectory(_directory);
+        string frontPath = Path.Combine(_directory, "editable-mask.png");
+        await new PngPixelWriter().WriteAsync(
+            frontPath, 1, 1, new[] { new Rgba32Color(10, 20, 30, 255) },
+            TestContext.Current.CancellationToken);
+        using MainWindowViewModel viewModel = CreateViewModel();
+        viewModel.SetSeparatePath(VoxelFace.Front, frontPath);
+        await viewModel.ReconstructSeparateAsync();
+
+        viewModel.SetImportSourceMaskPixel(VoxelFace.Front, 0, 0, occupied: false);
+
+        Assert.False(viewModel.CanApplyImport);
+        Assert.Contains("no visible pixels", viewModel.ImportSummary, StringComparison.OrdinalIgnoreCase);
+
+        viewModel.SetImportSourceMaskPixel(VoxelFace.Front, 0, 0, occupied: true);
+
+        Assert.True(viewModel.CanApplyImport);
+        await viewModel.ApplyImportDraftAsync();
+        Assert.Equal(1, viewModel.CurrentDocument!.Storage.OccupiedCount);
+    }
+
+    [Fact]
+    public async Task AsepriteAnimationImportsPlaysAndRoundTripsAllFrames()
+    {
+        Directory.CreateDirectory(_directory);
+        AsepriteFaceAnimationSource front = await WriteAnimatedFaceAsync(
+            "front-animation", new Rgba32Color(255, 0, 0, 255));
+        AsepriteFaceAnimationSource right = await WriteAnimatedFaceAsync(
+            "right-animation", new Rgba32Color(0, 255, 0, 255));
+        using MainWindowViewModel viewModel = CreateViewModel();
+
+        Assert.True(await viewModel.LoadAsepriteAnimationAsync(
+            new Dictionary<VoxelFace, AsepriteFaceAnimationSource>
+            {
+                [VoxelFace.Front] = front,
+                [VoxelFace.Right] = right,
+            }, TestContext.Current.CancellationToken));
+
+        Assert.Equal(2, viewModel.FrameCount);
+        Assert.True(viewModel.HasMultipleFrames);
+        Assert.Equal(0, viewModel.CurrentFrameIndex);
+        viewModel.SelectNextFrame();
+        Assert.Equal(1, viewModel.CurrentFrameIndex);
+        Assert.Contains("120 ms", viewModel.CurrentFrameSummary);
+
+        string sheetPath = Path.Combine(_directory, "timeline-export.png");
+        await viewModel.ExportAnimationSheetAsync(sheetPath, TestContext.Current.CancellationToken);
+        using (JsonDocument metadata = JsonDocument.Parse(
+                   await File.ReadAllTextAsync(Path.ChangeExtension(sheetPath, ".json"), TestContext.Current.CancellationToken)))
+        {
+            JsonElement frames = metadata.RootElement.GetProperty("frames");
+            Assert.Equal(2, frames.GetArrayLength());
+            Assert.Equal(80, frames[0].GetProperty("duration").GetInt32());
+            Assert.Equal(120, frames[1].GetProperty("duration").GetInt32());
+        }
+
+        string projectPath = Path.Combine(_directory, "animation.pxv");
+        Assert.True(await viewModel.SaveProjectAsync(projectPath, TestContext.Current.CancellationToken));
+        viewModel.SelectPreviousFrame();
+        Assert.True(await viewModel.LoadProjectAsync(projectPath, TestContext.Current.CancellationToken));
+        Assert.Equal(2, viewModel.FrameCount);
+        Assert.Equal(1, viewModel.CurrentFrameIndex);
+
+        viewModel.ToggleTimelinePlayback();
+        viewModel.AdvanceAnimations(0.13d);
+        Assert.Equal(0, viewModel.CurrentFrameIndex);
+    }
+
+    [Fact]
     public async Task ViewportEraseStrokeIsOneUndoableEdit()
     {
         using MainWindowViewModel viewModel = CreateViewModel();
@@ -623,6 +753,9 @@ public sealed class MainWindowViewModelTests : IDisposable
         string path = Path.Combine(_directory, "editable.pxv");
         using MainWindowViewModel viewModel = CreateViewModel();
         await viewModel.NewProjectAsync(TestContext.Current.CancellationToken);
+        viewModel.RotateObject(RotationGizmoAxis.LocalX, 23f);
+        viewModel.RotateObject(RotationGizmoAxis.LocalY, 41f);
+        System.Numerics.Quaternion savedOrientation = viewModel.CurrentModelRotation.Orientation;
         Assert.True(viewModel.IsProjectDirty);
         Assert.True(await viewModel.SaveProjectAsync(path, TestContext.Current.CancellationToken));
         Assert.False(viewModel.IsProjectDirty);
@@ -635,6 +768,19 @@ public sealed class MainWindowViewModelTests : IDisposable
         Assert.True(await viewModel.LoadProjectAsync(path, TestContext.Current.CancellationToken));
 
         Assert.Equal(new VoxelDimensions(32, 32, 32), viewModel.CurrentDocument!.Storage.Dimensions);
+        Assert.Equal(1, viewModel.CurrentDocument.Storage.OccupiedCount);
+        VoxelMeshData loadedMesh = Assert.IsType<VoxelMeshData>(viewModel.CurrentMesh);
+        Assert.NotEmpty(loadedMesh.Indices.ToArray());
+        Assert.NotNull(viewModel.CurrentRenderTransform);
+        PixelRenderLayout loadedLayout = Assert.IsType<PixelRenderLayout>(viewModel.CurrentRenderLayout);
+        PixelFramebuffer loadedFrame = new PixelArtVoxelRasterizer().Render(
+            loadedMesh,
+            viewModel.CurrentCameraState,
+            viewModel.CurrentModelRotation,
+            loadedLayout,
+            viewModel.CurrentRenderStyle);
+        Assert.Contains(loadedFrame.Pixels.Span.ToArray(), pixel => pixel != viewModel.CurrentRenderStyle.Background);
+        AssertOrientationEqual(savedOrientation, viewModel.CurrentModelRotation.Orientation);
         Assert.False(viewModel.CanUndo);
         Assert.False(viewModel.CanRedo);
         Assert.False(viewModel.IsProjectDirty);
@@ -649,7 +795,11 @@ public sealed class MainWindowViewModelTests : IDisposable
         await viewModel.NewProjectAsync(TestContext.Current.CancellationToken);
         for (int index = 0; index < 35; index++)
         {
-            viewModel.EditColor = Avalonia.Media.Color.FromRgb((byte)index, (byte)(index + 1), (byte)(index + 2));
+            viewModel.EditColor = Avalonia.Media.Color.FromArgb(
+                (byte)(index == 0 ? 96 : 255),
+                (byte)index,
+                (byte)(index + 1),
+                (byte)(index + 2));
             viewModel.AddCurrentColorToPalette();
         }
         Assert.Equal(32, viewModel.ProjectPalette.Count);
@@ -661,6 +811,7 @@ public sealed class MainWindowViewModelTests : IDisposable
         Assert.True(viewModel.IsProjectDirty);
         Assert.True(await viewModel.LoadProjectAsync(path, TestContext.Current.CancellationToken));
         Assert.Equal(32, viewModel.ProjectPalette.Count);
+        Assert.Equal(96, viewModel.ProjectPalette[0].A);
         Assert.False(viewModel.IsProjectDirty);
     }
 
@@ -728,18 +879,39 @@ public sealed class MainWindowViewModelTests : IDisposable
                 new SpriteSheetExporter(new PngPixelWriter())));
     }
 
-    private static Task WriteSheetAsync(string path, bool nonBinaryAlpha)
+    private static Task WriteSheetAsync(string path, bool emptyRightSlot)
     {
         const int width = 12;
         const int height = 2;
         Rgba32Color[] pixels = Enumerable.Repeat(
             new Rgba32Color(240, 240, 240, 255),
             width * height).ToArray();
-        if (nonBinaryAlpha)
+        if (emptyRightSlot)
         {
-            pixels[2] = new Rgba32Color(240, 240, 240, 128);
+            for (int y = 0; y < height; y++)
+            {
+                pixels[(y * width) + 2] = default;
+                pixels[(y * width) + 3] = default;
+            }
         }
 
         return new PngPixelWriter().WriteAsync(path, width, height, pixels);
+    }
+
+    private async Task<AsepriteFaceAnimationSource> WriteAnimatedFaceAsync(
+        string name,
+        Rgba32Color color)
+    {
+        string pngPath = Path.Combine(_directory, name + ".png");
+        SpriteFrame[] frames =
+        [
+            new("frame_0000", 0, 0f, 2, 2, Enumerable.Repeat(color, 4), 1, 1, 80),
+            new("frame_0001", 1, 0f, 2, 2,
+                Enumerable.Repeat(color with { Blue = (byte)(color.Blue == 255 ? 128 : 255) }, 4), 1, 1, 120),
+        ];
+        await new SpriteSheetExporter(new PngPixelWriter()).ExportAsync(
+            new SpriteSheetExportRequest(pngPath, frames, true, "animation"),
+            TestContext.Current.CancellationToken);
+        return new AsepriteFaceAnimationSource(pngPath, Path.ChangeExtension(pngPath, ".json"));
     }
 }

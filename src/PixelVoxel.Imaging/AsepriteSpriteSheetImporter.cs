@@ -58,29 +58,23 @@ public sealed class AsepriteSpriteSheetImporter
             slots);
     }
 
-    /// <summary>Inspects explicitly assigned PNG files and reports missing or mismatched faces.</summary>
+    /// <summary>Inspects one to six explicitly assigned PNG face files.</summary>
     public SixViewImportDraft InspectSeparate(IReadOnlyDictionary<VoxelFace, string> paths)
     {
         ArgumentNullException.ThrowIfNull(paths);
+        if (paths.Count is < 1 or > 6)
+        {
+            throw new ArgumentException("Assign between one and six face PNG files.", nameof(paths));
+        }
+
         List<SixViewSourceSlot> slots = [];
         List<ImportDiagnostic> diagnostics = [];
         int? commonWidth = null;
         int? commonHeight = null;
 
-        foreach (VoxelFace face in HorizontalOrder)
+        foreach (VoxelFace face in HorizontalOrder.Where(paths.ContainsKey))
         {
-            if (!paths.TryGetValue(face, out string? path))
-            {
-                diagnostics.Add(new ImportDiagnostic(
-                    "missing-face",
-                    ImportDiagnosticSeverity.Error,
-                    -1,
-                    face,
-                    null,
-                    null,
-                    $"The {face} view is missing."));
-                continue;
-            }
+            string path = paths[face];
 
             string fullPath = ValidatePngPath(path);
             using Image<ImageSharpColor> source = Image.Load<ImageSharpColor>(fullPath);
@@ -111,7 +105,7 @@ public sealed class AsepriteSpriteSheetImporter
         }
 
         return new SixViewImportDraft(
-            "Six separate PNG files",
+            $"{slots.Count} separate PNG file(s)",
             SixViewImportSourceKind.SeparateFiles,
             slots,
             diagnostics);
@@ -268,7 +262,7 @@ public sealed class AsepriteSpriteSheetImporter
                     faceAlignment.TargetFace,
                     null,
                     null,
-                    $"The {faceAlignment.TargetFace} offset clips {clippedOpaqueCount:N0} opaque pixels."));
+                    $"The {faceAlignment.TargetFace} offset clips {clippedOpaqueCount:N0} visible pixels."));
             }
 
             if (opaqueCount == 0)
@@ -280,7 +274,7 @@ public sealed class AsepriteSpriteSheetImporter
                     faceAlignment.TargetFace,
                     null,
                     null,
-                    $"The {faceAlignment.TargetFace} view contains no opaque pixels."));
+                    $"The {faceAlignment.TargetFace} view contains no visible pixels."));
             }
 
             views.Add(faceAlignment.TargetFace, transformed);
@@ -290,18 +284,6 @@ public sealed class AsepriteSpriteSheetImporter
                 transformed.Height,
                 opaqueCount,
                 source.SourcePath));
-        }
-
-        foreach (VoxelFace missingFace in HorizontalOrder.Where(face => !assignedFaces.Contains(face)))
-        {
-            diagnostics.Add(new ImportDiagnostic(
-                "missing-face",
-                ImportDiagnosticSeverity.Error,
-                -1,
-                missingFace,
-                null,
-                null,
-                $"The {missingFace} view is missing."));
         }
 
         if (assignedSources.Count != draft.Slots.Count)
@@ -348,16 +330,13 @@ public sealed class AsepriteSpriteSheetImporter
         return ApplyAlignment(draft, CreateDefaultAlignment(draft));
     }
 
-    /// <summary>Imports exactly six explicitly assigned PNG files.</summary>
+    /// <summary>Imports one to six explicitly assigned PNG face files.</summary>
     public SixViewImportResult ImportSeparate(IReadOnlyDictionary<VoxelFace, string> paths)
     {
         ArgumentNullException.ThrowIfNull(paths);
-        VoxelFace[] missingFaces = HorizontalOrder.Where(face => !paths.ContainsKey(face)).ToArray();
-        if (missingFaces.Length > 0 || paths.Count != HorizontalOrder.Length)
+        if (paths.Count is < 1 or > 6)
         {
-            throw new ArgumentException(
-                $"Exactly six face paths are required. Missing: {string.Join(", ", missingFaces)}.",
-                nameof(paths));
+            throw new ArgumentException("Assign between one and six face PNG files.", nameof(paths));
         }
 
         SixViewImportDraft draft = InspectSeparate(paths);
@@ -383,20 +362,7 @@ public sealed class AsepriteSpriteSheetImporter
             for (int x = 0; x < width; x++)
             {
                 ImageSharpColor sourceColor = source[startX + x, startY + y];
-                if (sourceColor.A is > 0 and < byte.MaxValue)
-                {
-                    diagnostics.Add(new ImportDiagnostic(
-                        "non-binary-alpha",
-                        ImportDiagnosticSeverity.Error,
-                        sourceIndex,
-                        suggestedFace,
-                        x,
-                        y,
-                        $"The {suggestedFace?.ToString() ?? $"source slot {sourceIndex}"} view " +
-                        $"contains non-binary alpha {sourceColor.A} at ({x}, {y})."));
-                }
-
-                if (sourceColor.A == byte.MaxValue)
+                if (sourceColor.A > 0)
                 {
                     opaquePixelCount++;
                 }
@@ -418,7 +384,7 @@ public sealed class AsepriteSpriteSheetImporter
                 suggestedFace,
                 null,
                 null,
-                $"The {suggestedFace?.ToString() ?? $"source slot {sourceIndex}"} view contains no opaque pixels."));
+                $"The {suggestedFace?.ToString() ?? $"source slot {sourceIndex}"} view contains no visible pixels."));
         }
 
         return new SixViewSourceSlot(
@@ -454,12 +420,12 @@ public sealed class AsepriteSpriteSheetImporter
 
                 if ((uint)targetX >= (uint)source.Width || (uint)targetY >= (uint)source.Height)
                 {
-                    if (pixel.Alpha == byte.MaxValue) clippedOpaqueCount++;
+                    if (pixel.Alpha > 0) clippedOpaqueCount++;
                     continue;
                 }
 
                 output[(targetY * source.Width) + targetX] = pixel;
-                if (pixel.Alpha == byte.MaxValue) opaqueCount++;
+                if (pixel.Alpha > 0) opaqueCount++;
             }
         }
 
@@ -489,7 +455,7 @@ public sealed class AsepriteSpriteSheetImporter
         string fullPath = Path.GetFullPath(path);
         if (!File.Exists(fullPath))
         {
-            throw new FileNotFoundException("The six-view PNG input was not found.", fullPath);
+            throw new FileNotFoundException("The face PNG input was not found.", fullPath);
         }
 
         if (!Path.GetExtension(fullPath).Equals(".png", StringComparison.OrdinalIgnoreCase))

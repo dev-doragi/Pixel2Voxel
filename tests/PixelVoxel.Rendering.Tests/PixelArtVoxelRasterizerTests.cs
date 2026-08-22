@@ -80,6 +80,28 @@ public sealed class PixelArtVoxelRasterizerTests
     }
 
     [Fact]
+    public void CompositesPartialAlphaOverTheRequestedBackground()
+    {
+        Rgba32Color translucentRed = new(255, 0, 0, 128);
+        VoxelDocument document = new(
+            new VoxelDimensions(1, 1, 1),
+            [new VoxelEntry(new VoxelCoordinate(0, 0, 0), VoxelCell.CreateUniform(translucentRed))]);
+        VoxelMeshData mesh = new VoxelSurfaceMesher()
+            .Build(document, TestContext.Current.CancellationToken)
+            .Mesh!;
+        Rgba32Color blue = new(0, 0, 255, 255);
+
+        PixelFramebuffer frame = new PixelArtVoxelRasterizer().Render(
+            mesh,
+            CreateFrontCamera(),
+            sourcePixelWidth: 4,
+            sourcePixelHeight: 4,
+            background: blue);
+
+        Assert.Contains(new Rgba32Color(128, 0, 127, 255), frame.Pixels.ToArray());
+    }
+
+    [Fact]
     public void KeepsTheSameRotationSafeCanvasForDifferentAngles()
     {
         Dictionary<VoxelCoordinate, VoxelCell> cells = Enumerable.Range(0, 6)

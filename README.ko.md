@@ -35,9 +35,9 @@ Front ∩ Right ∩ Back
 = reconstructed voxel volume
 ```
 
-각 후보 복셀을 여섯 입력 이미지에 투영하여 모든 시점의 불투명 영역을 만족하는 복셀만 남깁니다. 노출된 표면에는 원본 이미지의 색상을 보존합니다.
+각 후보 복셀을 선택한 입력 이미지에 투영하여 모든 시점의 가시 영역을 만족하는 복셀만 남깁니다. 노출된 표면에는 원본 이미지의 RGBA 색상을 보존합니다.
 
-실루엣 기반 재구성이므로 여섯 입력 화면에 나타나지 않는 내부 공간이나 숨겨진 오목 구조는 자동으로 복원할 수 없습니다.
+실루엣 기반 재구성이므로 선택한 입력 화면에 나타나지 않는 내부 공간이나 숨겨진 오목 구조는 자동으로 복원할 수 없습니다.
 
 ## 작업 흐름
 
@@ -69,7 +69,7 @@ Front ∩ Right ∩ Back
 
 ### 재구성
 
-- 6방향 정사영 복셀 재구성
+- 1~6방향 정사영 복셀 재구성 및 미관측 축 길이 지정
 - 개별 PNG 또는 `6×1` 스프라이트 시트 가져오기
 - Front / Right / Back / Left / Top / Bottom 매핑
 - 좌우 및 상하 반전
@@ -88,6 +88,9 @@ Front ∩ Right ∩ Back
 - 원본 시점 기준 카메라 스냅
 - X / Y / Z 회전 조작
 - 속도와 FPS를 조절할 수 있는 회전 미리보기
+- Aseprite PNG+JSON 면 애니메이션 가져오기와 duration 기반 타임라인 재생
+- face별 재투영 실루엣 충돌 진단 및 원본 마스크 수정
+- 프레임별 독립 복셀 편집 및 프로젝트 전체 Undo/Redo
 - 조명, 외곽선, 배경 설정
 
 ### 내보내기
@@ -96,6 +99,7 @@ Front ∩ Right ∩ Back
 - 4 / 8 / 16방향 스프라이트 시트
 - 애니메이션 PNG 시트 및 회전 GIF
 - Aseprite JSON
+- trim + MaxRects 단일 페이지 아틀라스(2px padding, 1px extrusion)
 - Unity용 OBJ / MTL / 팔레트 텍스처 패키지
 
 ### 프로젝트
@@ -105,9 +109,9 @@ Front ∩ Right ∩ Back
 
 ## 입력 지침
 
-- 여섯 시점에 같은 캔버스 크기를 사용하세요.
+- 선택한 모든 시점에 같은 캔버스 크기를 사용하세요.
 - 정사영 이미지를 사용하세요.
-- 완전 투명(`alpha = 0`) 또는 완전 불투명(`alpha = 255`) 픽셀을 사용하세요.
+- 완전 투명(`alpha = 0`) 픽셀은 빈 공간이며, `alpha = 1~255` 픽셀은 투명도를 보존한 복셀 면으로 가져옵니다.
 - 모든 시점에서 오브젝트를 일관되게 정렬하세요.
 - 재구성 전에 매핑과 정렬을 확인하세요.
 
@@ -138,6 +142,13 @@ dotnet test
 
 ```powershell
 dotnet run --project src\PixelVoxel.App\PixelVoxel.App.csproj -c Debug
+```
+
+프로젝트 컨테이너 검사 및 CI 검증:
+
+```powershell
+dotnet run --project src\PixelVoxel.Cli -- inspect model.pxv
+dotnet run --project src\PixelVoxel.Cli -- validate model.pxv
 ```
 
 Windows x64 self-contained 빌드 생성:

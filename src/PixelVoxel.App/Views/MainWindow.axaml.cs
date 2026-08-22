@@ -134,6 +134,37 @@ public sealed partial class MainWindow : Window
         }
     }
 
+    private async void SelectAnimatedFace_Click(object? sender, RoutedEventArgs e)
+    {
+        if (sender is not Button { Tag: string faceName } ||
+            !Enum.TryParse(faceName, out VoxelFace face) ||
+            DataContext is not MainWindowViewModel viewModel) return;
+        string? pngPath = await PickPngAsync($"Select animated {face} PNG sheet");
+        if (pngPath is null) return;
+        string jsonPath = Path.ChangeExtension(pngPath, ".json");
+        if (!File.Exists(jsonPath))
+        {
+            viewModel.ReportError($"Matching Aseprite JSON was not found: {Path.GetFileName(jsonPath)}");
+            return;
+        }
+        viewModel.SetAnimatedFaceSource(face, pngPath, jsonPath);
+    }
+
+    private async void ImportAssignedAnimation_Click(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is MainWindowViewModel viewModel && await EnsureCanReplaceProjectAsync())
+            await viewModel.ImportAssignedAnimationAsync();
+    }
+
+    private void PreviousTimelineFrame_Click(object? sender, RoutedEventArgs e) =>
+        (DataContext as MainWindowViewModel)?.SelectPreviousFrame();
+
+    private void NextTimelineFrame_Click(object? sender, RoutedEventArgs e) =>
+        (DataContext as MainWindowViewModel)?.SelectNextFrame();
+
+    private void ToggleTimelinePlayback_Click(object? sender, RoutedEventArgs e) =>
+        (DataContext as MainWindowViewModel)?.ToggleTimelinePlayback();
+
     private async void ApplyImport_Click(object? sender, RoutedEventArgs e)
     {
         if (DataContext is MainWindowViewModel viewModel && await EnsureCanReplaceProjectAsync())
@@ -165,6 +196,33 @@ public sealed partial class MainWindow : Window
         {
             viewModel.ResetImportFace(face);
         }
+    }
+
+    private void EraseImportConflicts_Click(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is MainWindowViewModel viewModel)
+        {
+            viewModel.EraseSelectedImportConflicts();
+        }
+    }
+
+    private void ImportMaskImage_PointerPressed(object? sender, PointerPressedEventArgs e)
+    {
+        if (sender is not Image { DataContext: ImportFaceSlotViewModel slot, Source: Avalonia.Media.Imaging.Bitmap bitmap } image ||
+            DataContext is not MainWindowViewModel viewModel) return;
+        Point point = e.GetPosition(image);
+        double scale = Math.Min(image.Bounds.Width / bitmap.PixelSize.Width, image.Bounds.Height / bitmap.PixelSize.Height);
+        if (!double.IsFinite(scale) || scale <= 0) return;
+        double drawnWidth = bitmap.PixelSize.Width * scale;
+        double drawnHeight = bitmap.PixelSize.Height * scale;
+        int x = (int)Math.Floor((point.X - ((image.Bounds.Width - drawnWidth) / 2d)) / scale);
+        int y = (int)Math.Floor((point.Y - ((image.Bounds.Height - drawnHeight) / 2d)) / scale);
+        if ((uint)x >= (uint)bitmap.PixelSize.Width || (uint)y >= (uint)bitmap.PixelSize.Height) return;
+        PointerPointProperties properties = e.GetCurrentPoint(image).Properties;
+        bool occupied = !properties.IsRightButtonPressed;
+        viewModel.SelectedImportFaceSlot = slot;
+        viewModel.SetImportSourceMaskPixel(slot.TargetFace, x, y, occupied);
+        e.Handled = true;
     }
 
     private void ResetAllImport_Click(object? sender, RoutedEventArgs e)
@@ -330,6 +388,7 @@ public sealed partial class MainWindow : Window
             case ExportWorkflowMode.DirectionSheet: ExportDirectionSheet_Click(sender, e); break;
             case ExportWorkflowMode.AnimatedGif: ExportAnimatedGif_Click(sender, e); break;
             case ExportWorkflowMode.AnimationSheet: ExportAnimationSheet_Click(sender, e); break;
+            case ExportWorkflowMode.TrimmedAtlas: ExportTrimmedAtlas_Click(sender, e); break;
             case ExportWorkflowMode.UnityObj: ExportUnityObjPackage_Click(sender, e); break;
         }
     }
@@ -359,6 +418,12 @@ public sealed partial class MainWindow : Window
     {
         string? path = await PickPngSavePathAsync("Export rotation sheet and Aseprite JSON", "p2v-rotation.png");
         if (path is not null && DataContext is MainWindowViewModel viewModel) await viewModel.ExportAnimationSheetAsync(path);
+    }
+
+    private async void ExportTrimmedAtlas_Click(object? sender, RoutedEventArgs e)
+    {
+        string? path = await PickPngSavePathAsync("Export trimmed MaxRects atlas and JSON", "p2v-atlas.png");
+        if (path is not null && DataContext is MainWindowViewModel viewModel) await viewModel.ExportTrimmedAtlasAsync(path);
     }
 
     private async void ExportUnityObjPackage_Click(object? sender, RoutedEventArgs e)

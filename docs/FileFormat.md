@@ -1,14 +1,40 @@
 # File Format
 
+## Pixel2Voxel project v3
+
+Version 3 persists the authoritative normalized model quaternion in addition to the compatibility
+yaw, pitch, and roll values. It also stores a timeline with the selected frame, unique frame names,
+positive millisecond durations, and frame-local document/source-view paths under `frames/NNNN/`.
+Every frame owns an independently editable `document.bin` and optional source views. The root
+`document.bin` and `views/` mirror the selected frame for compatibility with early v3 builds.
+v1 and v2 projects load as a single 100 ms frame and reconstruct orientation from stored Euler values.
+
 ## Pixel2Voxel project v2 additions
 
-Version 2 adds an optional project-owned `palette` array to `manifest.json`. It contains at most 32 opaque RGBA colors and does not change `document.bin` voxel semantics. The loader remains backward-compatible with version 1 projects, which open with an empty palette. Unknown future versions remain rejected.
+Version 2 adds an optional project-owned `palette` array to `manifest.json`. It contains at most 32 RGBA colors, including partial alpha, and does not change `document.bin` voxel semantics. The loader remains backward-compatible with version 1 projects, which open with an empty palette. Unknown future versions remain rejected.
 
 ## Animation exports
 
 Rotation animation sheets use one fixed logical canvas and pivot. Frames are written left-to-right to PNG, while Aseprite JSON records each frame rectangle, its duration in milliseconds, the shared pivot slice, and a `rotation` frame tag. GIF exports use the same sampled frames, loop indefinitely, and use GIF palette quantization only when more than 256 colors are present.
 
+Trimmed atlas export removes transparent borders per frame and uses deterministic non-rotating MaxRects
+packing on one page. The default contract is 2 px transparent padding outside a 1 px extruded edge,
+with a maximum page size of 4096×4096. JSON preserves `spriteSourceSize`, `sourceSize`, pivot, and duration.
+PNG and JSON are committed as a rollback-capable pair; duplicate frame names and single-page overflow fail
+before replacing existing output.
+
 GIF output can apply an Aseprite-style 25% to 1000% nearest-neighbor resize without changing the Aseprite sheet's logical frame size. For example, a 32x32 logical frame exports at 32x32 at 100% and 320x320 at 1000%. Rotation GIFs and animation sheets snapshot the current editor camera mode, preset, yaw, and pitch at export time. Pan is reset to zero and zoom to 1 so every frame remains centered on the fixed logical canvas. Rotation frames start at the captured model yaw, pitch, and roll; selected axes complete one loop without a duplicate 360-degree terminal frame.
+
+## Aseprite animation input
+
+- Each selected face uses a PNG sheet and adjacent Aseprite JSON file.
+- Array-form and object-form `frames` are accepted; rotated atlas frames are rejected.
+- Trimmed rectangles are restored through `spriteSourceSize` and `sourceSize` before reconstruction.
+- All selected faces must have identical frame counts, per-index durations, and per-index source canvas sizes.
+- Each synchronized index becomes an independently editable voxel frame.
+- For multi-frame projects, GIF, animation-sheet, and trimmed-atlas export render the stored timeline
+  meshes in frame order and preserve each frame's millisecond duration. Single-frame projects continue
+  to use the selected fixed-local-axis rotation loop.
 
 ## Unity OBJ package
 

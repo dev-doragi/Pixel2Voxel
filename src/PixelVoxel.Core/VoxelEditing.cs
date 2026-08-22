@@ -90,11 +90,22 @@ public sealed class VoxelEditHistory
     public bool Execute(VoxelDocument document, IVoxelEditCommand command)
     {
         ArgumentNullException.ThrowIfNull(command);
-        return Execute(document, command.CreateChangeSet(document));
+        return Execute(document, command.CreateChangeSet(document), 0);
+    }
+
+    /// <summary>Executes a command associated with one project frame context.</summary>
+    public bool Execute(VoxelDocument document, IVoxelEditCommand command, int contextId)
+    {
+        ArgumentNullException.ThrowIfNull(command);
+        return Execute(document, command.CreateChangeSet(document), contextId);
     }
 
     /// <summary>Executes and records one prebuilt atomic change.</summary>
     public bool Execute(VoxelDocument document, VoxelChangeSet changeSet)
+        => Execute(document, changeSet, 0);
+
+    /// <summary>Executes a prebuilt change associated with one project frame context.</summary>
+    public bool Execute(VoxelDocument document, VoxelChangeSet changeSet, int contextId)
     {
         ArgumentNullException.ThrowIfNull(document);
         ArgumentNullException.ThrowIfNull(changeSet);
@@ -108,7 +119,7 @@ public sealed class VoxelEditHistory
         long beforeStateId = _currentStateId;
         long afterStateId = _nextStateId++;
         document.Apply(changeSet);
-        _entries.Add(new HistoryEntry(changeSet, beforeStateId, afterStateId));
+        _entries.Add(new HistoryEntry(changeSet, contextId, beforeStateId, afterStateId));
         _cursor++;
         _currentStateId = afterStateId;
         if (_entries.Count > _capacity)
@@ -134,6 +145,23 @@ public sealed class VoxelEditHistory
         return true;
     }
 
+    /// <summary>Undoes the latest project-wide edit and resolves its owning frame document.</summary>
+    public bool Undo(Func<int, VoxelDocument> resolveDocument, out int contextId)
+    {
+        ArgumentNullException.ThrowIfNull(resolveDocument);
+        contextId = 0;
+        if (!CanUndo) return false;
+        HistoryEntry entry = _entries[_cursor - 1];
+        VoxelDocument document = resolveDocument(entry.ContextId) ??
+            throw new InvalidOperationException($"Edit context {entry.ContextId} has no document.");
+        document.Apply(entry.ChangeSet.Inverse());
+        contextId = entry.ContextId;
+        _cursor--;
+        _currentStateId = entry.BeforeStateId;
+        Changed?.Invoke(this, EventArgs.Empty);
+        return true;
+    }
+
     /// <summary>Reapplies the next previously undone edit.</summary>
     public bool Redo(VoxelDocument document)
     {
@@ -141,6 +169,23 @@ public sealed class VoxelEditHistory
         if (!CanRedo) return false;
         HistoryEntry entry = _entries[_cursor];
         document.Apply(entry.ChangeSet);
+        _cursor++;
+        _currentStateId = entry.AfterStateId;
+        Changed?.Invoke(this, EventArgs.Empty);
+        return true;
+    }
+
+    /// <summary>Redoes the next project-wide edit and resolves its owning frame document.</summary>
+    public bool Redo(Func<int, VoxelDocument> resolveDocument, out int contextId)
+    {
+        ArgumentNullException.ThrowIfNull(resolveDocument);
+        contextId = 0;
+        if (!CanRedo) return false;
+        HistoryEntry entry = _entries[_cursor];
+        VoxelDocument document = resolveDocument(entry.ContextId) ??
+            throw new InvalidOperationException($"Edit context {entry.ContextId} has no document.");
+        document.Apply(entry.ChangeSet);
+        contextId = entry.ContextId;
         _cursor++;
         _currentStateId = entry.AfterStateId;
         Changed?.Invoke(this, EventArgs.Empty);
@@ -164,7 +209,11 @@ public sealed class VoxelEditHistory
         Changed?.Invoke(this, EventArgs.Empty);
     }
 
-    private sealed record HistoryEntry(VoxelChangeSet ChangeSet, long BeforeStateId, long AfterStateId);
+    private sealed record HistoryEntry(
+        VoxelChangeSet ChangeSet,
+        int ContextId,
+        long BeforeStateId,
+        long AfterStateId);
 }
 
 /// <summary>Defines an inclusive, axis-aligned selection in voxel coordinates.</summary>

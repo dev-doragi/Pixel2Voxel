@@ -52,6 +52,41 @@ public sealed class PxvProjectSerializerTests : IDisposable
     }
 
     [Fact]
+    public async Task VersionThreeRoundTripPreservesEditableAnimationFrames()
+    {
+        Directory.CreateDirectory(_directory);
+        string path = Path.Combine(_directory, "animated.pxv");
+        PixelVoxelProject basis = CreateProject();
+        PixelVoxelProjectFrame[] frames =
+        [
+            new("idle_0000", 80, basis.Document, basis.SourceViews),
+            new(
+                "idle_0001",
+                120,
+                new VoxelDocument(
+                    new VoxelDimensions(2, 1, 1),
+                    [new VoxelEntry(new VoxelCoordinate(0, 0, 0),
+                        VoxelCell.CreateUniform(new Rgba32Color(90, 80, 70, 128)))]),
+                basis.SourceViews),
+        ];
+        PixelVoxelProject source = new(frames, 1, basis.Settings, basis.Palette);
+
+        await CreateSerializer().SaveAsync(path, source, TestContext.Current.CancellationToken);
+        PixelVoxelProject loaded = await CreateSerializer().LoadAsync(path, TestContext.Current.CancellationToken);
+
+        Assert.Equal(2, loaded.Frames.Count);
+        Assert.Equal(1, loaded.CurrentFrameIndex);
+        Assert.Equal([80, 120], loaded.Frames.Select(frame => frame.DurationMilliseconds));
+        Assert.Equal(["idle_0000", "idle_0001"], loaded.Frames.Select(frame => frame.Name));
+        Assert.Equal(1, loaded.Frames[1].Document.Storage.OccupiedCount);
+        Assert.True(loaded.Frames[1].Document.Storage.TryGetCell(
+            new VoxelCoordinate(0, 0, 0), out VoxelCell? cell));
+        Assert.Equal(new Rgba32Color(90, 80, 70, 128), cell!.GetColor(VoxelFace.Front));
+        Assert.NotNull(loaded.Frames[0].SourceViews);
+        Assert.Same(loaded.Frames[1].Document, loaded.Document);
+    }
+
+    [Fact]
     public async Task UnsupportedVersionIsRejectedBeforeApplicationStateCanChange()
     {
         Directory.CreateDirectory(_directory);

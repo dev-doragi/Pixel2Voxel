@@ -8,7 +8,7 @@ namespace PixelVoxel.Imaging;
 /// <param name="Face">The face assigned to the slot.</param>
 /// <param name="Width">The slot width.</param>
 /// <param name="Height">The slot height.</param>
-/// <param name="OpaquePixelCount">The number of pixels whose alpha is 255.</param>
+/// <param name="OpaquePixelCount">The number of visible pixels whose alpha is greater than zero.</param>
 /// <param name="SourcePath">The PNG containing the slot.</param>
 public sealed record SixViewSlotInfo(
     VoxelFace Face,

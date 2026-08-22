@@ -40,10 +40,19 @@ public sealed partial class App : Application
                 new PxvProjectSerializer(new PngPixelWriter(), new PngPixelReader()),
                 new VoxelPicker());
 
-            desktop.MainWindow = new MainWindow
+            MainWindow window = new()
             {
                 DataContext = viewModel,
             };
+            desktop.MainWindow = window;
+
+            string? projectPath = desktop.Args?
+                .FirstOrDefault(argument =>
+                    Path.GetExtension(argument).Equals(".pxv", StringComparison.OrdinalIgnoreCase));
+            if (!string.IsNullOrWhiteSpace(projectPath))
+            {
+                window.Opened += async (_, _) => await viewModel.LoadProjectAsync(projectPath);
+            }
         }
 
         base.OnFrameworkInitializationCompleted();

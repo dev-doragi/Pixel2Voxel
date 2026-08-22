@@ -35,9 +35,9 @@ Front ∩ Right ∩ Back
 = reconstructed voxel volume
 ```
 
-Each candidate voxel is projected onto the six input images. Voxels that satisfy the opaque regions of every input view are kept, while colors from the source images are preserved on exposed surfaces.
+Each candidate voxel is projected onto the selected input images. Voxels that satisfy the visible regions of every input view are kept, while RGBA colors from the source images are preserved on exposed surfaces.
 
-Because reconstruction is based on silhouettes, hidden cavities and concave structures that are not visible from the six input views cannot be recovered automatically.
+Because reconstruction is based on silhouettes, hidden cavities and concave structures that are not visible from the selected input views cannot be recovered automatically.
 
 ## Workflow
 
@@ -69,7 +69,7 @@ After importing, you can adjust view mapping, flips, and offsets before validati
 
 ### Reconstruction
 
-- Six-view orthographic voxel reconstruction
+- One-to-six-view orthographic voxel reconstruction with explicit unobserved-axis lengths
 - Individual PNG or `6×1` sprite sheet import
 - Front / Right / Back / Left / Top / Bottom mapping
 - Horizontal and vertical flip
@@ -88,6 +88,9 @@ After importing, you can adjust view mapping, flips, and offsets before validati
 - Camera snapping based on source views
 - X / Y / Z rotation controls
 - Rotation preview with adjustable speed and FPS
+- Aseprite PNG+JSON face-animation import with duration-based timeline playback
+- Per-face reprojected silhouette diagnostics and source-mask correction
+- Independent per-frame voxel editing with project-wide undo/redo
 - Lighting, outline, and background settings
 
 ### Export
@@ -96,6 +99,7 @@ After importing, you can adjust view mapping, flips, and offsets before validati
 - 4 / 8 / 16-direction sprite sheets
 - Animated PNG sprite sheets and rotation GIF
 - Aseprite JSON
+- Trimmed deterministic MaxRects atlas (2 px padding, 1 px extrusion)
 - OBJ / MTL / palette texture package for Unity
 
 ### Projects
@@ -105,9 +109,9 @@ After importing, you can adjust view mapping, flips, and offsets before validati
 
 ## Input Guidelines
 
-- Use the same canvas size for all six views.
+- Use the same canvas size for every selected view.
 - Use orthographic views.
-- Use fully transparent (`alpha = 0`) or fully opaque (`alpha = 255`) pixels.
+- Fully transparent pixels (`alpha = 0`) are empty; pixels with `alpha = 1-255` become voxel faces with preserved transparency.
 - Keep the object aligned consistently across all views.
 - Check mapping and alignment before reconstruction.
 
@@ -138,6 +142,13 @@ Run the desktop application:
 
 ```powershell
 dotnet run --project src\PixelVoxel.App\PixelVoxel.App.csproj -c Debug
+```
+
+Inspect or validate a project container in automation:
+
+```powershell
+dotnet run --project src\PixelVoxel.Cli -- inspect model.pxv
+dotnet run --project src\PixelVoxel.Cli -- validate model.pxv
 ```
 
 Create a Windows x64 self-contained build:

@@ -130,6 +130,29 @@ public sealed class VoxelEditingTests
         Assert.True(history.IsDirty);
     }
 
+    [Fact]
+    public void ProjectHistoryUndoesAcrossFrameContextsInEditOrder()
+    {
+        VoxelDocument first = EmptyDocument(new VoxelDimensions(1, 1, 1));
+        VoxelDocument second = EmptyDocument(new VoxelDimensions(1, 1, 1));
+        VoxelDocument[] frames = [first, second];
+        VoxelEditHistory history = new();
+        VoxelCoordinate coordinate = new(0, 0, 0);
+        history.Execute(first, new AddVoxelsCommand([coordinate], White), contextId: 0);
+        history.Execute(second, new AddVoxelsCommand([coordinate], Red), contextId: 1);
+
+        Assert.True(history.Undo(index => frames[index], out int firstContext));
+        Assert.Equal(1, firstContext);
+        Assert.Equal(1, first.Storage.OccupiedCount);
+        Assert.Equal(0, second.Storage.OccupiedCount);
+        Assert.True(history.Undo(index => frames[index], out int secondContext));
+        Assert.Equal(0, secondContext);
+        Assert.Equal(0, first.Storage.OccupiedCount);
+        Assert.True(history.Redo(index => frames[index], out int redoContext));
+        Assert.Equal(0, redoContext);
+        Assert.Equal(1, first.Storage.OccupiedCount);
+    }
+
     private static VoxelDocument EmptyDocument(VoxelDimensions dimensions) =>
         Document(dimensions);
 

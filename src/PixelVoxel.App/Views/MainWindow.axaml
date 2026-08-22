@@ -19,6 +19,7 @@
         <MenuItem Header="Save As..." IsEnabled="{Binding HasDocument}" Click="SaveProjectAs_Click" />
         <Separator />
         <MenuItem Header="Import 6 x 1 Sheet..." Click="OpenHorizontalSheet_Click" />
+        <MenuItem Header="Import 1-6 Face PNGs..." Click="ChooseSeparateFiles_Click" />
       </MenuItem>
       <MenuItem Header="Edit">
         <MenuItem Header="Undo" IsEnabled="{Binding CanUndo}" Click="Undo_Click" />
@@ -37,6 +38,11 @@
       <MenuItem Header="Export">
         <MenuItem Header="Current View PNG..." IsEnabled="{Binding CanExport}" Click="ExportCurrentView_Click" />
         <MenuItem Header="Direction Sheet..." IsEnabled="{Binding CanExport}" Click="ExportDirectionSheet_Click" />
+        <MenuItem Header="Animation Sheet + JSON..." IsEnabled="{Binding CanExportAnimation}" Click="ExportAnimationSheet_Click" />
+        <MenuItem Header="Trimmed Atlas + JSON..." IsEnabled="{Binding CanExport}" Click="ExportTrimmedAtlas_Click" />
+        <MenuItem Header="Animated GIF..." IsEnabled="{Binding CanExportAnimation}" Click="ExportAnimatedGif_Click" />
+        <Separator />
+        <MenuItem Header="Unity OBJ Package..." IsEnabled="{Binding CanExport}" Click="ExportUnityObjPackage_Click" />
       </MenuItem>
     </Menu>
 
@@ -93,6 +99,16 @@
                   <Button Tag="Left" Click="SelectFaceFile_Click" Content="Left..." />
                   <Button Tag="Top" Click="SelectFaceFile_Click" Content="Top..." />
                   <Button Tag="Bottom" Click="SelectFaceFile_Click" Content="Bottom..." />
+                  <TextBlock Margin="0,6,0,0" Classes="muted"
+                             Text="Fallback size for axes not visible in the selected faces" TextWrapping="Wrap" />
+                  <Grid ColumnDefinitions="Auto,*,Auto,*,Auto,*" ColumnSpacing="6">
+                    <TextBlock VerticalAlignment="Center" Text="X" />
+                    <NumericUpDown Grid.Column="1" Minimum="1" Maximum="1024" Value="{Binding UnobservedXLength}" />
+                    <TextBlock Grid.Column="2" VerticalAlignment="Center" Text="Y" />
+                    <NumericUpDown Grid.Column="3" Minimum="1" Maximum="1024" Value="{Binding UnobservedYLength}" />
+                    <TextBlock Grid.Column="4" VerticalAlignment="Center" Text="Z" />
+                    <NumericUpDown Grid.Column="5" Minimum="1" Maximum="1024" Value="{Binding UnobservedZLength}" />
+                  </Grid>
                   <Button Click="ReconstructSeparate_Click" Content="Inspect assigned views" />
                 </StackPanel>
               </Expander>
@@ -126,7 +142,7 @@
               </UniformGrid>
               <Separator />
               <TextBlock Text="PALETTE" Classes="section-title" />
-              <ColorPicker Color="{Binding EditColor}" IsAlphaEnabled="False" />
+              <ColorPicker Color="{Binding EditColor}" IsAlphaEnabled="True" />
               <Button Click="AddPaletteColor_Click" Content="Add current color" />
               <ItemsControl ItemsSource="{Binding ProjectPalette}">
                 <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
@@ -144,6 +160,33 @@
 
           <ScrollViewer IsVisible="{Binding IsAnimateWorkspace}" HorizontalContentAlignment="Stretch">
             <StackPanel Margin="14" Spacing="10">
+              <TextBlock Text="TIMELINE" Classes="section-title" />
+              <TextBlock Text="{Binding CurrentFrameSummary}" TextWrapping="Wrap" />
+              <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="6">
+                <Button Click="PreviousTimelineFrame_Click" IsEnabled="{Binding HasMultipleFrames}" Content="‹" />
+                <Slider Grid.Column="1" Minimum="0" Maximum="{Binding FrameLastIndex}"
+                        TickFrequency="1" IsSnapToTickEnabled="True" Value="{Binding CurrentFrameIndex}" />
+                <Button Grid.Column="2" Click="NextTimelineFrame_Click" IsEnabled="{Binding HasMultipleFrames}" Content="›" />
+              </Grid>
+              <Button Classes="accent" Click="ToggleTimelinePlayback_Click"
+                      IsEnabled="{Binding HasMultipleFrames}" Content="{Binding TimelinePlayPauseLabel}" />
+              <Expander Header="Import Aseprite face animation">
+                <StackPanel Margin="0,6,0,0" Spacing="4">
+                  <TextBlock Classes="muted" Text="Choose a PNG; the matching .json file beside it is used." TextWrapping="Wrap" />
+                  <UniformGrid Columns="2">
+                    <Button Margin="2" Tag="Front" Click="SelectAnimatedFace_Click" Content="Front..." />
+                    <Button Margin="2" Tag="Right" Click="SelectAnimatedFace_Click" Content="Right..." />
+                    <Button Margin="2" Tag="Back" Click="SelectAnimatedFace_Click" Content="Back..." />
+                    <Button Margin="2" Tag="Left" Click="SelectAnimatedFace_Click" Content="Left..." />
+                    <Button Margin="2" Tag="Top" Click="SelectAnimatedFace_Click" Content="Top..." />
+                    <Button Margin="2" Tag="Bottom" Click="SelectAnimatedFace_Click" Content="Bottom..." />
+                  </UniformGrid>
+                  <TextBlock Classes="muted" Text="{Binding AssignedAnimationSummary}" />
+                  <Button Click="ImportAssignedAnimation_Click" IsEnabled="{Binding CanImportAssignedAnimation}"
+                          Content="Import synchronized frames" />
+                </StackPanel>
+              </Expander>
+              <Separator />
               <TextBlock Text="ROTATION" Classes="section-title" />
               <CheckBox IsChecked="{Binding YawAnimationEnabled}" Content="Yaw · Y axis" />
               <CheckBox IsChecked="{Binding PitchAnimationEnabled}" Content="Pitch · X axis" />
@@ -173,6 +216,8 @@
                           IsChecked="{Binding IsAnimatedGifExport, Mode=OneWay}" Content="Animated GIF" />
             <ToggleButton Tag="AnimationSheet" Click="SelectExportMode_Click"
                           IsChecked="{Binding IsAnimationSheetExport, Mode=OneWay}" Content="Animation sheet + JSON" />
+            <ToggleButton Tag="TrimmedAtlas" Click="SelectExportMode_Click"
+                          IsChecked="{Binding IsTrimmedAtlasExport, Mode=OneWay}" Content="Trimmed MaxRects atlas" />
             <ToggleButton Tag="UnityObj" Click="SelectExportMode_Click"
                           IsChecked="{Binding IsUnityObjExport, Mode=OneWay}" Content="Unity OBJ package" />
           </StackPanel>
@@ -202,7 +247,7 @@
           <Grid Grid.Row="2">
             <StackPanel IsVisible="{Binding IsImportSourceStep}" Width="430"
                         HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="12">
-              <TextBlock Text="Start with six views" FontSize="26" FontWeight="SemiBold" HorizontalAlignment="Center" />
+              <TextBlock Text="Start with one to six views" FontSize="26" FontWeight="SemiBold" HorizontalAlignment="Center" />
               <TextBlock Classes="muted" Text="Front · Right · Back · Left · Top · Bottom" HorizontalAlignment="Center" />
               <Button Classes="accent" Click="OpenHorizontalSheet_Click" Content="Choose 6 x 1 sheet..." />
               <Button Click="ChooseSeparateFiles_Click" Content="Choose separate PNGs..." />
@@ -226,6 +271,7 @@
                       <Grid Grid.Row="1" Margin="0,6" ClipToBounds="True">
                         <views:CheckerboardControl />
                         <Image Source="{Binding PreviewBitmap}" Stretch="Uniform"
+                               PointerPressed="ImportMaskImage_PointerPressed"
                                RenderOptions.BitmapInterpolationMode="None" />
                       </Grid>
                       <TextBlock Grid.Row="2" Classes="muted" Text="{Binding SourceName}"
@@ -319,6 +365,7 @@
                 <StackPanel x:DataType="vm:ImportFaceSlotViewModel" Spacing="8">
                   <TextBlock Text="{Binding TargetFace}" FontSize="18" FontWeight="SemiBold" />
                   <TextBlock Classes="muted" Text="{Binding SourceName}" TextTrimming="CharacterEllipsis" />
+                  <TextBlock Classes="muted" Text="Left-click preview to paint; right-click to erase." TextWrapping="Wrap" />
                   <StackPanel Orientation="Horizontal" Spacing="8">
                     <CheckBox IsChecked="{Binding FlipHorizontal}" Content="Flip H" />
                     <CheckBox IsChecked="{Binding FlipVertical}" Content="Flip V" />
@@ -333,6 +380,7 @@
                   </Grid>
                   <TextBlock Foreground="{StaticResource DangerBrush}" IsVisible="{Binding HasError}"
                              Text="{Binding DiagnosticText}" TextWrapping="Wrap" />
+                  <Button Click="EraseImportConflicts_Click" Content="Erase conflicting source pixels" />
                   <Button Tag="{Binding TargetFace}" Click="ResetImportFace_Click" Content="Reset face" />
                 </StackPanel>
               </Border>
@@ -343,9 +391,10 @@
             </StackPanel>
 
             <StackPanel IsVisible="{Binding IsEditWorkspace}" Spacing="8">
-              <TextBlock Text="SELECTION" Classes="section-title" />
-              <TextBlock Text="{Binding SelectionSummary}" TextWrapping="Wrap" />
-              <UniformGrid Columns="3">
+              <TextBox PlaceholderText="Search inspector" Text="{Binding InspectorSearchText}" />
+              <TextBlock IsVisible="{Binding ShowEditCategory}" Text="SELECTION" Classes="section-title" />
+              <TextBlock IsVisible="{Binding ShowEditCategory}" Text="{Binding SelectionSummary}" TextWrapping="Wrap" />
+              <UniformGrid IsVisible="{Binding ShowEditCategory}" Columns="3">
                 <Button Margin="2" Tag="-X" Click="MoveSelection_Click" Content="-X" />
                 <Button Margin="2" Tag="+X" Click="MoveSelection_Click" Content="+X" />
                 <Button Margin="2" Tag="-Y" Click="MoveSelection_Click" Content="-Y" />
@@ -353,8 +402,8 @@
                 <Button Margin="2" Tag="-Z" Click="MoveSelection_Click" Content="-Z" />
                 <Button Margin="2" Tag="+Z" Click="MoveSelection_Click" Content="+Z" />
               </UniformGrid>
-              <Button Click="DeleteSelection_Click" Content="Delete selection" />
-              <Expander Header="Volume">
+              <Button IsVisible="{Binding ShowEditCategory}" Click="DeleteSelection_Click" Content="Delete selection" />
+              <Expander IsVisible="{Binding ShowEditCategory}" Header="Volume">
                 <StackPanel Margin="0,6,0,0" Spacing="6">
                   <Grid ColumnDefinitions="Auto,*,Auto,*,Auto,*">
                     <TextBlock Text="W" VerticalAlignment="Center" />
@@ -367,7 +416,7 @@
                   <Button Click="ResizeVolume_Click" Content="Apply resize" />
                 </StackPanel>
               </Expander>
-              <Expander Header="Camera" IsExpanded="True">
+              <Expander IsVisible="{Binding ShowCameraCategory}" Header="Camera" IsExpanded="True">
                 <StackPanel Margin="0,6,0,0" Spacing="6">
                   <TextBlock Classes="muted" Text="{Binding CameraSummary}" TextWrapping="Wrap" />
                   <CheckBox IsChecked="{Binding CameraFaceSnapEnabled}" Content="Snap to sheet faces" />
@@ -383,7 +432,7 @@
                   </UniformGrid>
                 </StackPanel>
               </Expander>
-              <Expander Header="Rendering">
+              <Expander IsVisible="{Binding ShowRenderingCategory}" Header="Rendering">
                 <StackPanel Margin="0,6,0,0" Spacing="6">
                   <CheckBox IsChecked="{Binding LightingEnabled}" Content="Directional lighting" />
                   <TextBlock Text="Light azimuth" />
@@ -401,35 +450,39 @@
             </StackPanel>
 
             <StackPanel IsVisible="{Binding IsAnimateWorkspace}" Spacing="8">
-              <TextBlock Text="ANIMATION OUTPUT" Classes="section-title" />
-              <TextBlock Classes="muted" Text="{Binding AnimationExportCameraSummary}" TextWrapping="Wrap" />
-              <Grid ColumnDefinitions="*,120">
+              <TextBox PlaceholderText="Search inspector" Text="{Binding InspectorSearchText}" />
+              <TextBlock IsVisible="{Binding ShowAnimationCategory}" Text="ANIMATION OUTPUT" Classes="section-title" />
+              <TextBlock IsVisible="{Binding ShowAnimationCategory}" Classes="muted" Text="{Binding AnimationExportCameraSummary}" TextWrapping="Wrap" />
+              <Grid IsVisible="{Binding ShowAnimationCategory}" ColumnDefinitions="*,120">
                 <TextBlock Text="FPS" VerticalAlignment="Center" />
                 <NumericUpDown Grid.Column="1" Minimum="1" Maximum="60" Value="{Binding AnimationFramesPerSecond}" />
               </Grid>
-              <Grid ColumnDefinitions="*,120">
+              <Grid IsVisible="{Binding ShowAnimationCategory}" ColumnDefinitions="*,120">
                 <TextBlock Text="GIF scale" VerticalAlignment="Center" />
                 <NumericUpDown Grid.Column="1" Minimum="25" Maximum="1000" Increment="25"
                                Value="{Binding GifExportResizePercent}" FormatString="0'%'" />
               </Grid>
-              <Button Classes="accent" IsEnabled="{Binding CanExport}"
+              <Button IsVisible="{Binding ShowAnimationCategory}" Classes="accent" IsEnabled="{Binding CanExportAnimation}"
                       Click="ExportAnimatedGif_Click" Content="Export animated GIF..." />
-              <Button IsEnabled="{Binding CanExport}"
+              <Button IsVisible="{Binding ShowAnimationCategory}" IsEnabled="{Binding CanExportAnimation}"
                       Click="ExportAnimationSheet_Click" Content="Export sheet + JSON..." />
+              <Button IsVisible="{Binding ShowAnimationCategory}" IsEnabled="{Binding CanExport}"
+                      Click="ExportTrimmedAtlas_Click" Content="Export trimmed atlas + JSON..." />
             </StackPanel>
 
             <StackPanel IsVisible="{Binding IsExportWorkspace}" Spacing="8">
-              <TextBlock Text="EXPORT OPTIONS" Classes="section-title" />
-              <TextBlock Classes="muted" Text="{Binding ExportSummary}" TextWrapping="Wrap" />
-              <TextBlock Text="Direction count" />
-              <UniformGrid Columns="3">
+              <TextBox PlaceholderText="Search inspector" Text="{Binding InspectorSearchText}" />
+              <TextBlock IsVisible="{Binding ShowExportCategory}" Text="EXPORT OPTIONS" Classes="section-title" />
+              <TextBlock IsVisible="{Binding ShowExportCategory}" Classes="muted" Text="{Binding ExportSummary}" TextWrapping="Wrap" />
+              <TextBlock IsVisible="{Binding ShowExportCategory}" Text="Direction count" />
+              <UniformGrid IsVisible="{Binding ShowExportCategory}" Columns="3">
                 <Button Margin="2" Tag="4" Click="SelectExportDirectionCount_Click" Content="4" />
                 <Button Margin="2" Tag="8" Click="SelectExportDirectionCount_Click" Content="8" />
                 <Button Margin="2" Tag="16" Click="SelectExportDirectionCount_Click" Content="16" />
               </UniformGrid>
-              <CheckBox IsChecked="{Binding ExportTrueIsometric}" Content="True isometric camera" />
-              <CheckBox IsChecked="{Binding ExportTransparentBackground}" Content="Transparent background" />
-              <Button Classes="accent" IsEnabled="{Binding CanExport}"
+              <CheckBox IsVisible="{Binding ShowExportCategory}" IsChecked="{Binding ExportTrueIsometric}" Content="True isometric camera" />
+              <CheckBox IsVisible="{Binding ShowExportCategory}" IsChecked="{Binding ExportTransparentBackground}" Content="Transparent background" />
+              <Button IsVisible="{Binding ShowExportCategory}" Classes="accent" IsEnabled="{Binding CanPrimaryExport}"
                       Click="PrimaryExport_Click" Content="{Binding PrimaryExportLabel}" />
             </StackPanel>
           </Grid>
