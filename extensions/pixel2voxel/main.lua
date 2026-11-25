@@ -1,6 +1,6 @@
 local workspace
 function init(plugin)
-  plugin:newCommand{id='Pixel2VoxelWorkspace',title='Pixel2Voxel...',group='edit_menu',onclick=function()
+  plugin:newCommand{id='Pixel2VoxelWorkspace',title='Pixel2Voxel...',group='edit_insert',onclick=function()
     if not app.isUIAvailable then return end
     if workspace then app.alert('Pixel2Voxel is already open.');return end
     local ok,result=pcall(function() return require('ui.workspace').open(plugin,function() workspace=nil end) end)

@@ -18,5 +18,23 @@ test('Orthographic odd dimensions / fidelity',function() for w=1,5 do local v=G.
 test('Directional colors in six canonical views',function() local v=G.hull(img(6,1,function(x)return 0xff000000|(x+1) end),{});local poses={{0,0},{90,0},{180,0},{-90,0},{0,-90},{0,90}};for f,p in ipairs(poses) do local b=render(v,p[1],p[2],2,false);eq(opaque(b),4);for i=1,#b.rgba,4 do local c=string.unpack('<I4',b.rgba,i);assert(c==0 or c==(0xff000000|f)) end end end)
 test('Stable multi-angle layout and determinism',function() local v=G.extrude(img(7,4,function(x,y)return x<=y and red or blue end),{depth=3});local views={};for i=0,15 do views[#views+1]={yaw=i*22.5,pitch=-30} end;local l=R.layout(v,views,2);local f=V.surface(v);for _,p in ipairs(views) do local a=R.render(v,f,p,l,false);eq(a.w,l.w);eq(a.h,l.h);assert(opaque(a)>0);eq(a.rgba,R.render(v,f,p,l,false).rgba) end end)
 test('Cooperative yield/resume equality',function() local im=img(32,32,function()return green end);local count=0;local co=coroutine.create(function()return G.extrude(im,{depth=8},function() count=count+1;if count%3==0 then coroutine.yield() end end)end);local res;repeat local ok,r=coroutine.resume(co);assert(ok,r);res=r until coroutine.status(co)=='dead';eq(res.count,8192);assert(count>3) end)
+test('Face snap and orbit outside threshold',function()
+  local yaw,pitch=R.snapToFace(-179,1,2);eq(yaw,-180);eq(pitch,0)
+  yaw,pitch=R.snapToFace(43,-89,2);eq(yaw,0);eq(pitch,-90)
+  yaw,pitch=R.snapToFace(87,0,2);eq(yaw,87);eq(pitch,0)
+end)
+test('Directional lighting color and alpha',function()
+  local v=G.extrude(img(1,1,function() return 0xffffffff end),{depth=1})
+  local light={azimuth=0,elevation=0,r=255,g=0,b=0}
+  local function firstOpaque(buf)
+    for i=1,#buf.rgba,4 do
+      local color=string.unpack('<I4',buf.rgba,i)
+      if color~=0 then return color end
+    end
+  end
+  eq(firstOpaque(render(v,0,0,1,light)),0xff7373ff)
+  eq(firstOpaque(render(v,180,0,1,light)),0xff737373)
+  eq(firstOpaque(render(v,0,0,1,false)),0xffffffff)
+end)
 local file=io.open('extension-tests/benchmark.rgba','rb');if file then local data=file:read('*a');file:close();test('Original benchmark (local only)',function() local v=G.hull({w=192,h=32,rgba=data},{});eq(v.w,20);eq(v.h,22);eq(v.d,12);eq(v.count,5124);eq(#V.surface(v),2054);local b=render(v,-45,-30,2,false);assert(opaque(b)>0) end) end
 print('PASS TOTAL '..total)

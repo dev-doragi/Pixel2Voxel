@@ -15,7 +15,7 @@
 | Windows desktop | Reconstruct, edit, and save voxel projects. Export sprites and 3D assets. | [Windows download](https://github.com/dev-doragi/Pixel2Voxel/releases/latest/download/Pixel2Voxel-win-x64.zip) · [C# source](src/) |
 | Aseprite extension | Extrude RGB sprites or rebuild voxels from layers or six views, then preview and bake sprites in Aseprite. | [GitHub Releases](https://github.com/dev-doragi/Pixel2Voxel/releases) · [Installation and Lua source](extensions/pixel2voxel/) |
 
-The Aseprite extension is an experimental 0.1.0 preview. See the [verification record](docs/AsepritePrototypeVerification.md) for Lua test results and the pending Aseprite host checks.
+The Aseprite extension is an experimental preview. See the [0.1.0 verification record](docs/AsepritePrototypeVerification.md) for the original Lua test results and the pending Aseprite host checks.
 
 ## Windows desktop edition
 

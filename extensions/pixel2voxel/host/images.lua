@@ -16,10 +16,23 @@ function M.image(buf)
   return im
 end
 function M.capture(sprite,frame,mode,useSelection)
-  assert(sprite and frame and frame>=1 and frame<=#sprite.frames,'E_NO_SOURCE: open a sprite and choose its frame')
+  assert(sprite,'E_NO_SOURCE: open a sprite')
+  if mode~='Six views (6 frames)' then
+    assert(frame and frame>=1 and frame<=#sprite.frames,'E_NO_SOURCE: choose a valid frame')
+  end
   -- Restrict host formats until compositing across color modes is verified.
   assert(sprite.colorMode==ColorMode.RGB,'E_LAYOUT: prototype requires RGB (Sprite > Color Mode > RGB)')
   local w,h=sprite.width,sprite.height;V.check(w,h,1)
+  if mode=='Six views (6 frames)' then
+    assert(#sprite.frames==6,'E_LAYOUT: expected exactly six frames (Front, Right, Back, Left, Top, Bottom)')
+    local sheetWidth=6*w
+    V.check(sheetWidth,h,1)
+    local sheet=Image(sheetWidth,h,ColorMode.RGB)
+    for i=1,6 do
+      sheet:drawSprite(sprite,i,Point((i-1)*w,0))
+    end
+    return M.pack(sheet,Rectangle(0,0,sheetWidth,h))
+  end
   if mode=='Layer stack' then
     local layers={};for _,layer in ipairs(sprite.layers) do
       if layer.isVisible then assert(not layer.isGroup and not layer.isTilemap and not layer.isReference,'E_UNSUPPORTED_LAYER: use visible flat image layers');assert(layer.opacity==255 and layer.blendMode==BlendMode.NORMAL,'E_UNSUPPORTED_LAYER: stack requires normal, opaque layers');layers[#layers+1]=layer end

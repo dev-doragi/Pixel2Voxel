@@ -15,7 +15,7 @@
 | Windows 데스크톱 | 복셀을 재구성하고 편집한 뒤 프로젝트를 저장하거나 스프라이트와 3D 에셋을 내보냅니다. | [Windows 다운로드](https://github.com/dev-doragi/Pixel2Voxel/releases/latest/download/Pixel2Voxel-win-x64.zip) · [C# 소스](src/) |
 | Aseprite 확장 | RGB 스프라이트를 돌출하거나 레이어 스택과 6방향 시트에서 복셀을 재구성합니다. Aseprite에서 바로 미리 보고 스프라이트를 베이크합니다. | [GitHub Releases](https://github.com/dev-doragi/Pixel2Voxel/releases) · [설치 안내 및 Lua 소스](extensions/pixel2voxel/) |
 
-Aseprite 확장 0.1.0은 실험용 프리뷰입니다. Lua 테스트 결과와 실제 Aseprite에서 확인할 항목은 [검증 기록](docs/AsepritePrototypeVerification.md)에서 확인할 수 있습니다.
+Aseprite 확장은 실험용 프리뷰입니다. 초기 Lua 테스트 결과와 실제 Aseprite에서 확인할 항목은 [0.1.0 검증 기록](docs/AsepritePrototypeVerification.md)에서 확인할 수 있습니다.
 
 ## Windows 데스크톱 버전
 

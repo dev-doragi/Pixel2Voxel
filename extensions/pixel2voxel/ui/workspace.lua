@@ -1,5 +1,5 @@
 local V=require('core.volume');local G=require('core.generate');local R=require('render.raster');local H=require('host.images');local M={}
-local modes={'Extrude','Layer stack','Six views'}
+local modes={'Extrude','Layer stack','Six views','Six views (6 frames)'}
 local names={'Front','Right','Back','Left','Top','Bottom'}
 local function clamp(x,a,b) return math.max(a,math.min(b,x)) end
 local function errmsg(e) return tostring(e):gsub('^.-:%d+: ','') end
@@ -9,6 +9,8 @@ function M.open(plugin,onclose)
   local closed,valid,dirty,live=false,false,false,false
   local align=G.defaultAlignment();local yaw,pitch=-45,-30;local zoom,panX,panY=0,0,0;local drag
   local debounce=0;local pendingRender=false;local prefs=plugin.preferences
+  local previewSpan,fitScale=1,1
+  local light={azimuth=-45,elevation=45,r=255,g=255,b=255}
   local function status(s) if not closed then dlg:modify{id='status',text=s} end end
   local function buttons() local ready=valid and not job and not dirty and not pendingRender;dlg:modify{id='bake',enabled=ready};dlg:modify{id='stackcopy',enabled=ready and volume and not volume.directional or false};dlg:modify{id='cancel',enabled=job~=nil} end
   local function cancel() job,jobDone,jobKind=nil,nil,nil;pendingRender=false end
@@ -17,8 +19,15 @@ function M.open(plugin,onclose)
   local function alive() for _,s in ipairs(app.sprites) do if s==source then return true end end;return false end
   local function markDirty() if jobKind=='bake' then cancel() end;dirty=true;debounce=5;valid=false;status('Source changed - refresh required');buttons() end
   local function attach() detach();if source then local ok,id=pcall(function() eventSource=source.events;return eventSource:on('change',markDirty) end);if ok then listener=id end end end
-  local function label() local name=source and app.fs.fileName(source.filename) or 'No source';if name=='' then name='Untitled' end;dlg:modify{id='source',text=name..' | frame '..frame} end
-  local function config() local d=dlg.data;return {mode=d.mode,depth=d.depth,align=align,density=tonumber(d.density),lit=d.lighting,selection=d.selection} end
+  local function label()
+    local name=source and app.fs.fileName(source.filename) or 'No source'
+    if name=='' then name='Untitled' end
+    if source then
+      name=name..(dlg.data.mode==modes[4] and ' | frames 1-6' or ' | frame '..frame)
+    end
+    dlg:modify{id='source',text=name}
+  end
+  local function config() local d=dlg.data;return {mode=d.mode,depth=d.depth,align=align,density=tonumber(d.density),lit=d.lighting and light,selection=d.selection} end
   local function begin(kind,fn,done)
     cancel();jobKind=kind;local deadline
     job=coroutine.create(function() return fn(function() if os.clock()>=deadline then coroutine.yield() end end) end)
@@ -27,12 +36,18 @@ function M.open(plugin,onclose)
   end
   local setDeadline
   local function display(buf)
+    previewSpan=buf.previewSpan
     buffer=buf;preview=H.image(buf);valid=true;local clip=volume.clipped or 0;status(string.format('%d x %d x %d | %d voxels%s',volume.w,volume.h,volume.d,volume.count,clip>0 and (' | '..clip..' clipped pixels') or ''));dlg:repaint();buttons()
   end
   local function render()
     if not volume or not faces or dirty then return end
     local c=config();local view={yaw=yaw,pitch=pitch};local v,f=volume,faces;valid=false
-    setDeadline=begin('render',function(step) local layout=R.layout(v,{view},c.density);return R.render(v,f,view,layout,c.lit,step) end,display)
+    setDeadline=begin('render',function(step)
+      local layout=R.layout(v,{view},c.density)
+      local buf=R.render(v,f,view,layout,c.lit,step)
+      buf.previewSpan=math.ceil(math.sqrt(v.w*v.w+v.h*v.h+v.d*v.d)*c.density)+6
+      return buf
+    end,display)
   end
   local function build()
     cancel();dirty=false;valid=false;volume,faces=nil,nil;buttons()
@@ -43,8 +58,32 @@ function M.open(plugin,onclose)
       local ok,f=pcall(V.surface,v,step);return {v=v,f=ok and f or nil,err=not ok and f or nil}
     end,function(result) volume,faces=result.v,result.f;if result.err then fail(result.err) else render() end end)
   end
-  local function pose(a,b) if jobKind=='bake' then return end;yaw,pitch=a,clamp(b,-90,90);if jobKind=='build' then return end;pendingRender=true;valid=false;buttons() end
+  local function pose(a,b)
+    if jobKind=='bake' then return end
+    a=(a+180)%360-180
+    b=clamp(b,-90,90)
+    if dlg.data.snap then a,b=R.snapToFace(a,b,dlg.data.snapAngle) end
+    yaw,pitch=a,b
+    if jobKind=='build' then return end
+    pendingRender=true;valid=false;buttons()
+  end
   local function fit() zoom,panX,panY=0,0,0;dlg:repaint() end
+  local function lightingDialog()
+    local d=Dialog{title='Directional lighting',parent=dlg}
+    d:slider{id='azimuth',label='Azimuth',min=-180,max=180,value=light.azimuth}
+    d:slider{id='elevation',label='Elevation',min=-90,max=90,value=light.elevation}
+    d:color{id='color',label='Light color',color=Color{r=light.r,g=light.g,b=light.b}}
+    d:button{text='Cancel'}
+    d:button{text='Apply',onclick=function()
+      local settings=d.data
+      local color=settings.color
+      light={azimuth=settings.azimuth,elevation=settings.elevation,r=color.red,g=color.green,b=color.blue}
+      d:close()
+      dlg:modify{id='lighting',selected=true}
+      pose(yaw,pitch)
+    end}
+    d:show()
+  end
   local function alignDialog()
     local draft={};for i,a in ipairs(align) do draft[i]={slot=a.slot,dx=a.dx,dy=a.dy,fh=a.fh,fv=a.fv} end
     local d=Dialog{title='Align six views',parent=dlg};local selected=1
@@ -71,17 +110,53 @@ function M.open(plugin,onclose)
   local function cleanup() if closed then return end;closed=true;cancel();detach();if timer then timer:stop() end;pcall(function() prefs.depth=dlg.data.depth;prefs.density=dlg.data.density;prefs.lighting=dlg.data.lighting;local b=dlg.bounds;prefs.w=b.width;prefs.h=b.height;prefs.x=b.x;prefs.y=b.y end);onclose() end
   dlg=Dialog{title='Pixel2Voxel | Prototype',resizeable=true,onclose=cleanup}
   dlg:label{id='source',label='Source',text='No source'};dlg:button{text='Use active',onclick=function() source=app.activeSprite;frame=app.activeFrame and app.activeFrame.frameNumber or 1;align=G.defaultAlignment();attach();label();build() end};dlg:button{text='Refresh',onclick=build}
-  dlg:combobox{id='mode',label='Method',options=modes,option=modes[1],onchange=function() local m=dlg.data.mode;dlg:modify{id='depth',visible=m=='Extrude'};dlg:modify{id='align',visible=m=='Six views'};dlg:modify{id='selection',visible=m~='Layer stack'};build() end}
+  dlg:combobox{id='mode',label='Method',options=modes,option=modes[1],onchange=function()
+    local m=dlg.data.mode
+    dlg:modify{id='depth',visible=m=='Extrude'}
+    dlg:modify{id='align',visible=m==modes[3] or m==modes[4]}
+    dlg:modify{id='selection',visible=m~='Layer stack' and m~=modes[4]}
+    label()
+    build()
+  end}
   dlg:slider{id='depth',label='Depth',min=1,max=64,value=clamp(tonumber(prefs.depth) or 3,1,64),onchange=function() markDirty();debounce=3;dirty='settings' end}
   dlg:button{id='align',text='Align views...',visible=false,onclick=alignDialog};dlg:check{id='selection',text='Selection only',selected=false,onclick=build}
   dlg:canvas{id='viewport',width=440,height=260,onpaint=function(ev)
     local gc=ev.context;local w,h=gc.width,gc.height;gc.color=Color{r=39,g=42,b=49,a=255};gc:fillRect(Rectangle(0,0,w,h));gc.color=Color{r=46,g=50,b=58,a=255}
     for y=0,h-1,24 do for x=0,w-1,24 do if (x//24+y//24)%2==0 then gc:fillRect(Rectangle(x,y,math.min(24,w-x),math.min(24,h-y))) end end end
-    if preview then local fitScale=math.min((w-16)/preview.width,(h-16)/preview.height);local k=zoom==0 and (fitScale>=1 and math.floor(fitScale) or fitScale) or zoom;local dw,dh=math.max(1,math.floor(preview.width*k)),math.max(1,math.floor(preview.height*k));gc:drawImage(preview,0,0,preview.width,preview.height,math.floor((w-dw)/2+panX),math.floor((h-dh)/2+panY),dw,dh) end
+    if preview then
+      fitScale=math.max(1,math.min(w,h)-16)/previewSpan
+      if fitScale>=1 then fitScale=math.floor(fitScale) end
+      local k=zoom==0 and fitScale or zoom
+      local dw,dh=math.max(1,math.floor(preview.width*k)),math.max(1,math.floor(preview.height*k))
+      gc:drawImage(preview,0,0,preview.width,preview.height,math.floor((w-dw)/2+panX),math.floor((h-dh)/2+panY),dw,dh)
+    end
     gc.color=Color{r=205,g=213,b=222,a=255};gc:fillText(string.format('Yaw %d  Pitch %d',math.floor(yaw),math.floor(pitch)),8,7);if not valid and preview then gc:fillText('Previous preview',8,h-20) end
-  end,onmousedown=function(e) drag={x=e.x,y=e.y,pan=e.button==MouseButton.MIDDLE or e.shiftKey} end,onmouseup=function() drag=nil end,onmousemove=function(e) if not drag then return end;local dx,dy=e.x-drag.x,e.y-drag.y;drag.x,drag.y=e.x,e.y;if drag.pan then panX,panY=panX+dx,panY+dy;dlg:repaint() else pose(yaw+dx*0.7,pitch+dy*0.7) end end,onwheel=function(e) zoom=clamp((zoom==0 and 2 or zoom)+(e.deltaY<0 and 1 or -1),1,32);dlg:repaint() end,ondblclick=fit}
-  dlg:button{text='Front',onclick=function() pose(0,0) end};dlg:button{text='Right',onclick=function() pose(90,0) end};dlg:button{text='Top',onclick=function() pose(0,-90) end};dlg:button{text='ISO',onclick=function() pose(-45,-30) end};dlg:button{text='Fit',onclick=fit}
+  end,onmousedown=function(e)
+    drag={x=e.x,y=e.y,yaw=yaw,pitch=pitch,pan=e.button==MouseButton.MIDDLE or e.shiftKey}
+  end,onmouseup=function() drag=nil end,onmousemove=function(e)
+    if not drag then return end
+    local dx,dy=e.x-drag.x,e.y-drag.y
+    drag.x,drag.y=e.x,e.y
+    if drag.pan then
+      panX,panY=panX+dx,panY+dy
+      dlg:repaint()
+    else
+      drag.yaw=(drag.yaw-dx*0.7+180)%360-180
+      drag.pitch=clamp(drag.pitch-dy*0.7,-90,90)
+      pose(drag.yaw,drag.pitch)
+    end
+  end,onwheel=function(e)
+    if not preview or e.deltaY==0 then return end
+    local k=zoom==0 and fitScale or zoom
+    zoom=clamp(k*(e.deltaY<0 and 1.25 or 0.8),math.min(0.125,fitScale),math.max(32,fitScale))
+    dlg:repaint()
+  end,ondblclick=fit}
+  dlg:button{text='Front',onclick=function() pose(0,0) end};dlg:button{text='Right',onclick=function() pose(90,0) end};dlg:button{text='Back',onclick=function() pose(180,0) end};dlg:button{text='Left',onclick=function() pose(-90,0) end}
+  dlg:button{text='Top',onclick=function() pose(0,-90) end};dlg:button{text='Bottom',onclick=function() pose(0,90) end};dlg:button{text='ISO',onclick=function() pose(-45,-30) end};dlg:button{text='Fit',onclick=fit}
+  dlg:check{id='snap',text='Snap to sheet faces',selected=true,onclick=function() pose(yaw,pitch) end}
+  dlg:slider{id='snapAngle',label='Snap angle',min=1,max=30,value=2,onchange=function() pose(yaw,pitch) end}
   dlg:combobox{id='density',label='Render pixels / voxel',options={'1','2','4'},option=({['1']=true,['2']=true,['4']=true})[prefs.density] and prefs.density or '2',onchange=function() pose(yaw,pitch) end};dlg:check{id='lighting',text='Shading',selected=prefs.lighting==true,onclick=function() pose(yaw,pitch) end}
+  dlg:button{text='Light settings...',onclick=lightingDialog}
   dlg:check{id='live',text='Live (experimental)',selected=false,onclick=function() live=dlg.data.live;if live and dirty then debounce=1 end end}
   dlg:label{id='status',text='Open a sprite to begin.'};dlg:button{id='stackcopy',text='Editable stack',enabled=false,onclick=function() local ok,e=pcall(H.stackCopy,volume);if not ok then fail(e) end end};dlg:button{id='cancel',text='Cancel job',enabled=false,onclick=function() cancel();valid=false;status('Cancelled - Refresh to rebuild');buttons() end};dlg:button{id='bake',text='Bake sprite...',enabled=false,onclick=bakeDialog}
   dlg:show{wait=false,autoscrollbars=true};if type(prefs.w)=='number' and type(prefs.h)=='number' then pcall(function() local b=dlg.bounds;dlg.bounds=Rectangle(b.x,b.y,clamp(prefs.w,320,1200),clamp(prefs.h,300,1000)) end) end;dlg:modify{id='align',visible=false};label();attach()

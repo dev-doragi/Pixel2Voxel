@@ -2,7 +2,7 @@
   "name": "pixel2voxel",
   "displayName": "Pixel2Voxel",
   "description": "Pixel art to voxel and back, inside Aseprite",
-  "version": "0.1.0",
+  "version": "0.1.2",
   "author": {
     "name": "Pixel2Voxel contributors"
   },
