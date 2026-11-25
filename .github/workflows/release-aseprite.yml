@@ -1,0 +1,33 @@
+name: Release Pixel2Voxel for Aseprite
+
+on:
+  push:
+    tags:
+      - "aseprite-v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release-aseprite:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build extension package
+        id: package
+        run: |
+          version=$(python3 -c 'import json; print(json.load(open("extensions/pixel2voxel/package.json"))["version"])')
+          test "$GITHUB_REF_NAME" = "aseprite-v$version"
+          asset="Pixel2Voxel-$version.aseprite-extension"
+          python3 scripts/package-extension.py "$asset"
+          python3 -m zipfile -t "$asset"
+          echo "asset=$asset" >> "$GITHUB_OUTPUT"
+      - name: Publish experimental prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ASSET: ${{ steps.package.outputs.asset }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" "$ASSET" \
+            --verify-tag --prerelease --latest=false \
+            --title "Pixel2Voxel for Aseprite ${GITHUB_REF_NAME#aseprite-v} (Prototype)" \
+            --notes "Experimental Aseprite extension. Installation and GUI behavior in Aseprite remain unverified."

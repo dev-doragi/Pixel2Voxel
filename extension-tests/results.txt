@@ -1,0 +1,13 @@
+PASS Lua syntax: all host modules           0.001 s
+PASS Extrude crop, occupancy, color         0.000 s
+PASS Stack empty layer + XZ orientation     0.000 s
+PASS Six-view face color and cube           0.000 s
+PASS Asymmetric six-view reconstruction     0.000 s
+PASS Alignment flip/offset and clipping     0.000 s
+PASS Invalid inputs and volume limit        0.000 s
+PASS Orthographic odd dimensions / fidelity 0.001 s
+PASS Directional colors in six canonical views 0.000 s
+PASS Stable multi-angle layout and determinism 0.012 s
+PASS Cooperative yield/resume equality      0.002 s
+PASS Original benchmark (local only)        0.029 s
+PASS TOTAL 12

@@ -11,3 +11,5 @@ TestResults/
 artifacts/
 publish/
 *.nupkg
+/Pixel2Voxel-*.aseprite-extension
+/extension-tests/benchmark.rgba

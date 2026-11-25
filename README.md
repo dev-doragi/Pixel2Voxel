@@ -8,11 +8,20 @@
   English · <a href="README.ko.md">한국어</a>
 </p>
 
-**Pixel2Voxel (P2V)** is a Windows desktop editor that reconstructs editable voxel models from six orthographic pixel-art views.
+**Pixel2Voxel (P2V)** turns pixel art into voxels. This repository contains two editions.
+
+| Edition | Workflow | Downloads and source |
+| --- | --- | --- |
+| Windows desktop | Reconstruct, edit, and save voxel projects. Export sprites and 3D assets. | [Windows download](https://github.com/dev-doragi/Pixel2Voxel/releases/latest/download/Pixel2Voxel-win-x64.zip) · [C# source](src/) |
+| Aseprite extension | Extrude RGB sprites or rebuild voxels from layers or six views, then preview and bake sprites in Aseprite. | [GitHub Releases](https://github.com/dev-doragi/Pixel2Voxel/releases) · [Installation and Lua source](extensions/pixel2voxel/) |
+
+The Aseprite extension is an experimental 0.1.0 preview. See the [verification record](docs/AsepritePrototypeVerification.md) for Lua test results and the pending Aseprite host checks.
+
+## Windows desktop edition
 
 Import Front, Right, Back, Left, Top, and Bottom images, reconstruct them into a voxel volume, edit the result, preview it from different angles, and export sprites or 3D assets in a single workflow.
 
-## Download
+### Download
 
 [Download the latest Windows version](https://github.com/dev-doragi/Pixel2Voxel/releases/latest/download/Pixel2Voxel-win-x64.zip)
 

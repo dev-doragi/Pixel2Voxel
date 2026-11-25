@@ -8,11 +8,20 @@
   <a href="README.md">English</a> · 한국어
 </p>
 
-**Pixel2Voxel(P2V)**은 여섯 방향의 정사영 픽셀 아트 이미지로부터 편집 가능한 복셀 모델을 재구성하는 Windows 데스크톱 편집기입니다.
+**Pixel2Voxel(P2V)**은 픽셀 아트를 복셀로 변환합니다. 이 저장소에서 두 버전을 제공합니다.
+
+| 버전 | 작업 방식 | 다운로드 및 소스 |
+| --- | --- | --- |
+| Windows 데스크톱 | 복셀을 재구성하고 편집한 뒤 프로젝트를 저장하거나 스프라이트와 3D 에셋을 내보냅니다. | [Windows 다운로드](https://github.com/dev-doragi/Pixel2Voxel/releases/latest/download/Pixel2Voxel-win-x64.zip) · [C# 소스](src/) |
+| Aseprite 확장 | RGB 스프라이트를 돌출하거나 레이어 스택과 6방향 시트에서 복셀을 재구성합니다. Aseprite에서 바로 미리 보고 스프라이트를 베이크합니다. | [GitHub Releases](https://github.com/dev-doragi/Pixel2Voxel/releases) · [설치 안내 및 Lua 소스](extensions/pixel2voxel/) |
+
+Aseprite 확장 0.1.0은 실험용 프리뷰입니다. Lua 테스트 결과와 실제 Aseprite에서 확인할 항목은 [검증 기록](docs/AsepritePrototypeVerification.md)에서 확인할 수 있습니다.
+
+## Windows 데스크톱 버전
 
 Front, Right, Back, Left, Top, Bottom 이미지를 가져와 복셀 볼륨으로 재구성하고, 결과를 편집하고, 여러 각도에서 미리 본 뒤 스프라이트 또는 3D 에셋으로 내보낼 수 있습니다.
 
-## 다운로드
+### 다운로드
 
 [최신 Windows 버전 다운로드](https://github.com/dev-doragi/Pixel2Voxel/releases/latest/download/Pixel2Voxel-win-x64.zip)
 

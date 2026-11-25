@@ -1,0 +1,21 @@
+{
+  "name": "pixel2voxel",
+  "displayName": "Pixel2Voxel",
+  "description": "Pixel art to voxel and back, inside Aseprite",
+  "version": "0.1.0",
+  "author": {
+    "name": "Pixel2Voxel contributors"
+  },
+  "license": "Apache-2.0",
+  "categories": [
+    "Scripts"
+  ],
+  "contributes": {
+    "scripts": [
+      {
+        "path": "main.lua"
+      }
+    ]
+  },
+  "publisher": "Pixel2Voxel"
+}
